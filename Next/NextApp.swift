@@ -6,24 +6,24 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct NextApp: App {
-    @State private var store = AppStore.makeForLaunch()
+    let container: ModelContainer
+
+    init() {
+        do {
+            container = try NextPersistence.makeContainer()
+        } catch {
+            fatalError("Could not create persistent ModelContainer: \(error)")
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(store)
         }
-    }
-}
-
-private extension AppStore {
-    static func makeForLaunch() -> AppStore {
-        if ProcessInfo.processInfo.arguments.contains(uiTestSeedArgument) {
-            return seededForUITests()
-        }
-        return AppStore()
+        .modelContainer(container)
     }
 }

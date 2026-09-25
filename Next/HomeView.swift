@@ -5,6 +5,7 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 enum TimeOption: CaseIterable, Identifiable {
@@ -25,7 +26,7 @@ enum TimeOption: CaseIterable, Identifiable {
     }
 }
 
-enum EnergyLevel: CaseIterable, Identifiable {
+enum EnergyLevel: String, CaseIterable, Identifiable, Codable {
     case low
     case good
     case ready
@@ -42,8 +43,8 @@ enum EnergyLevel: CaseIterable, Identifiable {
 }
 
 struct HomeView: View {
-    @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
+    @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
@@ -79,7 +80,7 @@ struct HomeView: View {
             RecommendationView(
                 availableTime: input.time,
                 energy: input.energy,
-                tasks: store.allTasks
+                tasks: persistedTasks.map(\.asTaskItem)
             )
         }
     }
@@ -171,5 +172,5 @@ private struct RecommendationInput: Hashable, Identifiable {
     NavigationStack {
         HomeView()
     }
-    .environment(AppStore())
+    .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
 }

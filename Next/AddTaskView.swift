@@ -5,12 +5,14 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct AddTaskView: View {
-    @Environment(AppStore.self) private var store
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Query private var goals: [Goal]
     @FocusState private var titleFocused: Bool
 
     let goalID: UUID
@@ -114,13 +116,19 @@ struct AddTaskView: View {
                 .frame(height: 0.5)
 
             Button("ADD TASK →") {
-                guard let duration = selectedDuration, let energy = selectedEnergy else { return }
-                store.addTask(
-                    to: goalID,
-                    title: trimmedTitle,
-                    durationMinutes: duration.minutes,
-                    energyRequired: energy
+                guard let duration = selectedDuration,
+                      let energy = selectedEnergy,
+                      let goal = goals.first(where: { $0.id == goalID })
+                else { return }
+                modelContext.insert(
+                    GoalTask(
+                        title: trimmedTitle,
+                        durationMinutes: duration.minutes,
+                        energyRequired: energy,
+                        goal: goal
+                    )
                 )
+                try? modelContext.save()
                 dismiss()
             }
             .font(.system(size: 13, weight: .semibold))

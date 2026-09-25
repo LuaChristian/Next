@@ -5,6 +5,7 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
@@ -30,5 +31,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environment(AppStore())
+        .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
 }

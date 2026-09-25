@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import Next
 
@@ -309,66 +310,91 @@ struct FocusSessionResultTests {
     }
 }
 
-struct AppStoreTests {
+struct PersistenceTests {
     private let engine = RecommendationEngine()
 
-    @Test func addGoalStoresTitleAreaAndPriority() {
-        let store = AppStore()
-        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-
-        #expect(store.goals.count == 1)
-        #expect(goal.title == "Study for MCAT")
-        #expect(goal.area == .education)
-        #expect(goal.priority == .high)
-        #expect(goal.tasks.isEmpty)
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        let container = try NextPersistence.makeInMemoryContainer()
+        return ModelContext(container)
     }
 
-    @Test func addTaskAppearsOnTheCorrectGoal() {
-        let store = AppStore()
-        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-        let task = store.addTask(
-            to: goal.id,
-            title: "Review amino acids",
-            durationMinutes: 30,
-            energyRequired: .good
-        )
+    @MainActor
+    @Test func insertGoalPersistsFields() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        try context.save()
 
-        #expect(store.goal(id: goal.id)?.tasks.count == 1)
-        #expect(task?.title == "Review amino acids")
-        #expect(task?.durationMinutes == 30)
-        #expect(task?.energyRequired == .good)
-        #expect(task?.area == "Education")
-        #expect(task?.goal == "Study for MCAT")
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Study for MCAT")
+        #expect(goals.first?.area == .education)
+        #expect(goals.first?.priority == .high)
+        #expect(goals.first?.tasks.isEmpty == true)
     }
 
-    @Test func taskDoesNotAppearOnADifferentGoal() {
-        let store = AppStore()
-        let mcat = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-        let next = store.addGoal(title: "Build Next", area: .creative, priority: .normal)
-        store.addTask(
-            to: mcat.id,
+    @MainActor
+    @Test func taskBelongsToOwningGoal() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(
             title: "Review amino acids",
             durationMinutes: 30,
-            energyRequired: .good
+            energyRequired: .good,
+            goal: goal
         )
+        context.insert(task)
+        try context.save()
 
-        #expect(store.goal(id: mcat.id)?.tasks.count == 1)
-        #expect(store.goal(id: next.id)?.tasks.isEmpty == true)
-        #expect(store.allTasks.count == 1)
+        #expect(goal.tasks.count == 1)
+        #expect(task.goal?.id == goal.id)
+        #expect(task.goal?.title == "Study for MCAT")
+        #expect(task.asTaskItem.area == "Education")
+        #expect(task.asTaskItem.goal == "Study for MCAT")
     }
 
-    @Test func userCreatedTaskCanBeRecommended() {
-        let store = AppStore()
-        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-        store.addTask(
-            to: goal.id,
-            title: "Review amino acids",
-            durationMinutes: 30,
-            energyRequired: .good
+    @MainActor
+    @Test func taskDoesNotAppearOnADifferentGoal() throws {
+        let context = try makeContext()
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        let next = Goal(title: "Build Next", area: .creative, priority: .normal)
+        context.insert(mcat)
+        context.insert(next)
+        context.insert(
+            GoalTask(
+                title: "Review amino acids",
+                durationMinutes: 30,
+                energyRequired: .good,
+                goal: mcat
+            )
         )
+        try context.save()
 
+        #expect(mcat.tasks.count == 1)
+        #expect(next.tasks.isEmpty)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
+    }
+
+    @MainActor
+    @Test func persistedTaskCanBeRecommendedWithDerivedContext() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(
+            GoalTask(
+                title: "Review amino acids",
+                durationMinutes: 30,
+                energyRequired: .good,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        let candidates = try context.fetch(FetchDescriptor<GoalTask>()).map(\.asTaskItem)
         let result = engine.recommendations(
-            tasks: store.allTasks,
+            tasks: candidates,
             availableTime: .thirty,
             energy: .good
         )
@@ -379,18 +405,23 @@ struct AppStoreTests {
         #expect(result.first?.goal == "Study for MCAT")
     }
 
-    @Test func userCreatedTaskStillRespectsTimeFilter() {
-        let store = AppStore()
-        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-        store.addTask(
-            to: goal.id,
-            title: "Practice biology questions",
-            durationMinutes: 45,
-            energyRequired: .good
+    @MainActor
+    @Test func persistedTaskStillRespectsTimeFilter() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(
+            GoalTask(
+                title: "Practice biology questions",
+                durationMinutes: 45,
+                energyRequired: .good,
+                goal: goal
+            )
         )
+        try context.save()
 
         let result = engine.recommendations(
-            tasks: store.allTasks,
+            tasks: try context.fetch(FetchDescriptor<GoalTask>()).map(\.asTaskItem),
             availableTime: .thirty,
             energy: .good
         )
@@ -398,18 +429,23 @@ struct AppStoreTests {
         #expect(result.isEmpty)
     }
 
-    @Test func userCreatedTaskStillRespectsEnergyFilter() {
-        let store = AppStore()
-        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
-        store.addTask(
-            to: goal.id,
-            title: "Practice biology questions",
-            durationMinutes: 30,
-            energyRequired: .ready
+    @MainActor
+    @Test func persistedTaskStillRespectsEnergyFilter() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(
+            GoalTask(
+                title: "Practice biology questions",
+                durationMinutes: 30,
+                energyRequired: .ready,
+                goal: goal
+            )
         )
+        try context.save()
 
         let result = engine.recommendations(
-            tasks: store.allTasks,
+            tasks: try context.fetch(FetchDescriptor<GoalTask>()).map(\.asTaskItem),
             availableTime: .thirty,
             energy: .good
         )
@@ -417,8 +453,38 @@ struct AppStoreTests {
         #expect(result.isEmpty)
     }
 
-    @Test func productionStoreStartsEmpty() {
-        #expect(AppStore().goals.isEmpty)
-        #expect(AppStore().allTasks.isEmpty)
+    @MainActor
+    @Test func goalAndTaskSurviveContainerRecreation() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-m6-\(UUID().uuidString).store")
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+            context.insert(goal)
+            context.insert(
+                GoalTask(
+                    title: "Review amino acids",
+                    durationMinutes: 30,
+                    energyRequired: .good,
+                    goal: goal
+                )
+            )
+            try context.save()
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        let tasks = try context.fetch(FetchDescriptor<GoalTask>())
+
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Study for MCAT")
+        #expect(goals.first?.area == .education)
+        #expect(tasks.count == 1)
+        #expect(tasks.first?.title == "Review amino acids")
+        #expect(tasks.first?.goal?.title == "Study for MCAT")
+        #expect(tasks.first?.asTaskItem.area == "Education")
     }
 }

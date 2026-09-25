@@ -5,11 +5,12 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct GardenView: View {
-    @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
+    @Query(sort: \Goal.createdAt) private var goals: [Goal]
     @State private var isPlanting = false
 
     private var canvasColor: Color {
@@ -25,7 +26,7 @@ struct GardenView: View {
                 .tracking(3.2)
                 .foregroundStyle(.secondary)
 
-            if store.goals.isEmpty {
+            if goals.isEmpty {
                 emptyState
             } else {
                 goalList
@@ -71,13 +72,13 @@ struct GardenView: View {
                     .padding(.top, 36)
                     .padding(.bottom, 12)
 
-                ForEach(store.goals) { goal in
+                ForEach(goals) { goal in
                     NavigationLink(value: goal.id) {
                         goalRow(goal)
                     }
                     .buttonStyle(.plain)
 
-                    if goal.id != store.goals.last?.id {
+                    if goal.id != goals.last?.id {
                         Rectangle()
                             .fill(Color.primary.opacity(0.12))
                             .frame(height: 0.5)
@@ -130,5 +131,5 @@ struct GardenView: View {
     NavigationStack {
         GardenView()
     }
-    .environment(AppStore())
+    .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
 }

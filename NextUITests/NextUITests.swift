@@ -138,6 +138,7 @@ final class NextUITests: XCTestCase {
     @MainActor
     func testUserCreatedGoalAndTaskFeedRecommendation() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["UITEST_IN_MEMORY"]
         app.launch()
 
         app.tabBars.buttons["Garden"].tap()
@@ -189,6 +190,66 @@ final class NextUITests: XCTestCase {
         app.tabBars.buttons["Garden"].tap()
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testGardenPersistsAcrossProcessTermination() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-ui-\(UUID().uuidString).store")
+        let storeArguments = ["UITEST_STORE_URL", storeURL.path]
+
+        let app = XCUIApplication()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        plantMCATGoalAndAminoTask(in: app)
+
+        app.terminate()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.tabBars.buttons["Home"].tap()
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.staticTexts["EDUCATION"].exists)
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].exists)
+    }
+
+    private func plantMCATGoalAndAminoTask(in app: XCUIApplication) {
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+
+        app.buttons["+ PLANT A GOAL"].tap()
+        let goalField = app.textFields["Goal title"]
+        XCTAssertTrue(goalField.waitForExistence(timeout: 2))
+        goalField.tap()
+        goalField.typeText("Study for MCAT")
+        app.buttons["Education"].tap()
+        app.buttons["High"].tap()
+        app.buttons["PLANT GOAL →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+
+        app.buttons["+ ADD TASK"].tap()
+        let taskField = app.textFields["Task title"]
+        XCTAssertTrue(taskField.waitForExistence(timeout: 2))
+        taskField.tap()
+        taskField.typeText("Review amino acids")
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["ADD TASK →"].tap()
+
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
     }
 

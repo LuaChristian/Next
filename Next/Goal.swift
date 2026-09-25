@@ -6,8 +6,9 @@
 //
 
 import Foundation
+import SwiftData
 
-enum GoalArea: String, CaseIterable, Identifiable {
+enum GoalArea: String, CaseIterable, Identifiable, Codable {
     case education
     case career
     case fitness
@@ -24,7 +25,7 @@ enum GoalArea: String, CaseIterable, Identifiable {
     }
 }
 
-enum GoalPriority: String, CaseIterable, Identifiable {
+enum GoalPriority: String, CaseIterable, Identifiable, Codable {
     case low
     case normal
     case high
@@ -33,32 +34,6 @@ enum GoalPriority: String, CaseIterable, Identifiable {
 
     var title: String {
         rawValue.capitalized
-    }
-}
-
-struct Goal: Identifiable, Hashable {
-    let id: UUID
-    var title: String
-    var area: GoalArea
-    var priority: GoalPriority
-    var tasks: [TaskItem]
-
-    init(
-        id: UUID = UUID(),
-        title: String,
-        area: GoalArea,
-        priority: GoalPriority,
-        tasks: [TaskItem] = []
-    ) {
-        self.id = id
-        self.title = title
-        self.area = area
-        self.priority = priority
-        self.tasks = tasks
-    }
-
-    var taskCountLabel: String {
-        tasks.count == 1 ? "1 TASK" : "\(tasks.count) TASKS"
     }
 }
 
@@ -89,5 +64,78 @@ enum TaskDuration: CaseIterable, Identifiable {
         case .sixty: "60 min"
         case .ninetyPlus: "90+ min"
         }
+    }
+}
+
+@Model
+final class Goal {
+    var id: UUID
+    var title: String
+    var area: GoalArea
+    var priority: GoalPriority
+    var createdAt: Date
+
+    @Relationship(deleteRule: .cascade, inverse: \GoalTask.goal)
+    var tasks: [GoalTask]
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        area: GoalArea,
+        priority: GoalPriority,
+        createdAt: Date = Date(),
+        tasks: [GoalTask] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.area = area
+        self.priority = priority
+        self.createdAt = createdAt
+        self.tasks = tasks
+    }
+
+    var sortedTasks: [GoalTask] {
+        tasks.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    var taskCountLabel: String {
+        tasks.count == 1 ? "1 TASK" : "\(tasks.count) TASKS"
+    }
+}
+
+@Model
+final class GoalTask {
+    var id: UUID
+    var title: String
+    var durationMinutes: Int
+    var energyRequired: EnergyLevel
+    var createdAt: Date
+    var goal: Goal?
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        durationMinutes: Int,
+        energyRequired: EnergyLevel,
+        createdAt: Date = Date(),
+        goal: Goal? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.durationMinutes = durationMinutes
+        self.energyRequired = energyRequired
+        self.createdAt = createdAt
+        self.goal = goal
+    }
+
+    var asTaskItem: TaskItem {
+        TaskItem(
+            id: id,
+            title: title,
+            durationMinutes: durationMinutes,
+            energyRequired: energyRequired,
+            area: goal?.area.title ?? "",
+            goal: goal?.title ?? ""
+        )
     }
 }

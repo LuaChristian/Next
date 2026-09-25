@@ -5,10 +5,11 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct PlantGoalView: View {
-    @Environment(AppStore.self) private var store
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @FocusState private var titleFocused: Bool
@@ -117,7 +118,10 @@ struct PlantGoalView: View {
 
             Button("PLANT GOAL →") {
                 guard let area = selectedArea else { return }
-                store.addGoal(title: trimmedTitle, area: area, priority: selectedPriority)
+                modelContext.insert(
+                    Goal(title: trimmedTitle, area: area, priority: selectedPriority)
+                )
+                try? modelContext.save()
                 dismiss()
             }
             .font(.system(size: 13, weight: .semibold))

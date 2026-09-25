@@ -5,18 +5,19 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct GoalDetailView: View {
-    @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
+    @Query(sort: \Goal.createdAt) private var goals: [Goal]
 
     let goalID: UUID
 
     @State private var isAddingTask = false
 
     private var goal: Goal? {
-        store.goal(id: goalID)
+        goals.first(where: { $0.id == goalID })
     }
 
     private var canvasColor: Color {
@@ -47,7 +48,7 @@ struct GoalDetailView: View {
                 if goal.tasks.isEmpty {
                     emptyTasks
                 } else {
-                    taskList(goal.tasks)
+                    taskList(goal.sortedTasks)
                 }
 
                 Spacer(minLength: 24)
@@ -81,7 +82,7 @@ struct GoalDetailView: View {
         }
     }
 
-    private func taskList(_ tasks: [TaskItem]) -> some View {
+    private func taskList(_ tasks: [GoalTask]) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text("YOUR TASKS")
