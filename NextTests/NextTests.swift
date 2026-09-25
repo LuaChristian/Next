@@ -206,3 +206,219 @@ struct FocusSessionTimerTests {
         #expect(session.activeElapsed(at: start.addingTimeInterval(20 * 60)) == 6 * 60)
     }
 }
+
+struct FocusSessionResultTests {
+    private let start = Date(timeIntervalSince1970: 1_700_000_000)
+    private let amino = TaskItem(
+        title: "Review amino acids",
+        durationMinutes: 25,
+        energyRequired: .good,
+        area: "Education",
+        goal: "Study for MCAT"
+    )
+
+    @Test func naturalCompletionUsesPlannedDuration() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let end = start.addingTimeInterval(25 * 60)
+        session.evaluateCompletion(at: end)
+
+        let result = session.makeResult(for: amino, at: end)
+
+        #expect(result?.task.id == amino.id)
+        #expect(result?.plannedDurationSeconds == 1_500.0)
+        #expect(result?.focusedDurationSeconds == 1_500.0)
+        #expect(result?.endedNaturally == true)
+    }
+
+    @Test func earlyFinishUsesActiveElapsedTime() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let finishAt = start.addingTimeInterval(10 * 60)
+        session.finish(at: finishAt)
+
+        let result = session.makeResult(for: amino, at: finishAt)
+
+        #expect(result?.focusedDurationSeconds == 600.0)
+        #expect(result?.endedNaturally == false)
+    }
+
+    @Test func resultExcludesPausedTime() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        session.pause(at: start.addingTimeInterval(5 * 60))
+        session.resume(at: start.addingTimeInterval(8 * 60))
+        let finishAt = start.addingTimeInterval(12 * 60)
+        session.finish(at: finishAt)
+
+        let result = session.makeResult(for: amino, at: finishAt)
+
+        #expect(result?.focusedDurationSeconds == 540.0)
+        #expect(result?.endedNaturally == false)
+    }
+
+    @Test func naturalCompletionClampsToPlannedDuration() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let lateReturn = start.addingTimeInterval(30 * 60)
+        session.evaluateCompletion(at: lateReturn)
+
+        let result = session.makeResult(for: amino, at: lateReturn)
+
+        #expect(result?.focusedDurationSeconds == 1_500.0)
+        #expect(result?.endedNaturally == true)
+    }
+
+    @Test func completionAnswerStartsUnselected() {
+        let state = SessionCompletionState()
+
+        #expect(state.taskCompletion == nil)
+        #expect(state.canContinue == false)
+    }
+
+    @Test func completionSelectionCanBeChanged() {
+        var state = SessionCompletionState()
+        state.select(.completed)
+        #expect(state.taskCompletion == .completed)
+        #expect(state.canContinue)
+
+        state.select(.notCompleted)
+        #expect(state.taskCompletion == .notCompleted)
+        #expect(state.canContinue)
+    }
+
+    @Test func focusedDurationLabelUsesMinutes() {
+        let underAMinute = FocusSessionResult(
+            task: amino,
+            plannedDurationSeconds: 25 * 60,
+            focusedDurationSeconds: 42,
+            endedNaturally: false
+        )
+        let oneMinute = FocusSessionResult(
+            task: amino,
+            plannedDurationSeconds: 25 * 60,
+            focusedDurationSeconds: 60,
+            endedNaturally: false
+        )
+        let twentyThree = FocusSessionResult(
+            task: amino,
+            plannedDurationSeconds: 25 * 60,
+            focusedDurationSeconds: 23 * 60 + 14,
+            endedNaturally: false
+        )
+
+        #expect(underAMinute.focusedDurationLabel == "<1 MIN FOCUSED")
+        #expect(oneMinute.focusedDurationLabel == "1 MIN FOCUSED")
+        #expect(twentyThree.focusedDurationLabel == "23 MIN FOCUSED")
+    }
+}
+
+struct AppStoreTests {
+    private let engine = RecommendationEngine()
+
+    @Test func addGoalStoresTitleAreaAndPriority() {
+        let store = AppStore()
+        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+
+        #expect(store.goals.count == 1)
+        #expect(goal.title == "Study for MCAT")
+        #expect(goal.area == .education)
+        #expect(goal.priority == .high)
+        #expect(goal.tasks.isEmpty)
+    }
+
+    @Test func addTaskAppearsOnTheCorrectGoal() {
+        let store = AppStore()
+        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+        let task = store.addTask(
+            to: goal.id,
+            title: "Review amino acids",
+            durationMinutes: 30,
+            energyRequired: .good
+        )
+
+        #expect(store.goal(id: goal.id)?.tasks.count == 1)
+        #expect(task?.title == "Review amino acids")
+        #expect(task?.durationMinutes == 30)
+        #expect(task?.energyRequired == .good)
+        #expect(task?.area == "Education")
+        #expect(task?.goal == "Study for MCAT")
+    }
+
+    @Test func taskDoesNotAppearOnADifferentGoal() {
+        let store = AppStore()
+        let mcat = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+        let next = store.addGoal(title: "Build Next", area: .creative, priority: .normal)
+        store.addTask(
+            to: mcat.id,
+            title: "Review amino acids",
+            durationMinutes: 30,
+            energyRequired: .good
+        )
+
+        #expect(store.goal(id: mcat.id)?.tasks.count == 1)
+        #expect(store.goal(id: next.id)?.tasks.isEmpty == true)
+        #expect(store.allTasks.count == 1)
+    }
+
+    @Test func userCreatedTaskCanBeRecommended() {
+        let store = AppStore()
+        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+        store.addTask(
+            to: goal.id,
+            title: "Review amino acids",
+            durationMinutes: 30,
+            energyRequired: .good
+        )
+
+        let result = engine.recommendations(
+            tasks: store.allTasks,
+            availableTime: .thirty,
+            energy: .good
+        )
+
+        #expect(result.count == 1)
+        #expect(result.first?.title == "Review amino acids")
+        #expect(result.first?.area == "Education")
+        #expect(result.first?.goal == "Study for MCAT")
+    }
+
+    @Test func userCreatedTaskStillRespectsTimeFilter() {
+        let store = AppStore()
+        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+        store.addTask(
+            to: goal.id,
+            title: "Practice biology questions",
+            durationMinutes: 45,
+            energyRequired: .good
+        )
+
+        let result = engine.recommendations(
+            tasks: store.allTasks,
+            availableTime: .thirty,
+            energy: .good
+        )
+
+        #expect(result.isEmpty)
+    }
+
+    @Test func userCreatedTaskStillRespectsEnergyFilter() {
+        let store = AppStore()
+        let goal = store.addGoal(title: "Study for MCAT", area: .education, priority: .high)
+        store.addTask(
+            to: goal.id,
+            title: "Practice biology questions",
+            durationMinutes: 30,
+            energyRequired: .ready
+        )
+
+        let result = engine.recommendations(
+            tasks: store.allTasks,
+            availableTime: .thirty,
+            energy: .good
+        )
+
+        #expect(result.isEmpty)
+    }
+
+    @Test func productionStoreStartsEmpty() {
+        #expect(AppStore().goals.isEmpty)
+        #expect(AppStore().allTasks.isEmpty)
+    }
+}

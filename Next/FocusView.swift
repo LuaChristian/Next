@@ -16,6 +16,7 @@ struct FocusView: View {
 
     @State private var session: FocusSessionTimer
     @State private var now = Date()
+    @State private var result: FocusSessionResult?
 
     init(task: TaskItem, onDone: @escaping () -> Void = {}) {
         self.task = task
@@ -29,11 +30,15 @@ struct FocusView: View {
             : Color(red: 0.98, green: 0.97, blue: 0.94)
     }
 
-    private var isEnded: Bool {
-        session.phase == .ended
+    var body: some View {
+        if let result {
+            CompletionView(result: result, onFinished: onDone)
+        } else {
+            focusContent
+        }
     }
 
-    var body: some View {
+    private var focusContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("NEXT")
                 .font(.system(size: 13, weight: .medium))
@@ -50,7 +55,7 @@ struct FocusView: View {
 
             Spacer(minLength: 32)
 
-            controls
+            activeControls
         }
         .padding(.horizontal, 28)
         .padding(.top, 16)
@@ -98,15 +103,6 @@ struct FocusView: View {
         return "\(minutes) minutes, \(seconds) seconds"
     }
 
-    @ViewBuilder
-    private var controls: some View {
-        if isEnded {
-            endedControls
-        } else {
-            activeControls
-        }
-    }
-
     private var activeControls: some View {
         VStack(spacing: 18) {
             Rectangle()
@@ -127,39 +123,12 @@ struct FocusView: View {
                 .frame(height: 0.5)
 
             Button("Finish early") {
-                session.finish(at: Date())
-                now = Date()
+                captureResult(after: { $0.finish(at: $1) }, at: Date())
             }
             .font(.system(size: 16, weight: .regular))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
         }
-    }
-
-    private var endedControls: some View {
-        VStack(spacing: 18) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
-
-            Text("SESSION ENDED")
-                .font(.system(size: 13, weight: .medium))
-                .tracking(2.2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
-
-            Button("Done") {
-                onDone()
-            }
-            .font(.system(size: 16, weight: .regular))
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .accessibilityElement(children: .contain)
     }
 
     private func togglePause() {
@@ -170,17 +139,33 @@ struct FocusView: View {
             session.resume(at: current)
         }
         now = current
+        captureResultIfEnded(at: current)
     }
 
     private func refresh(at current: Date) {
         now = current
         session.evaluateCompletion(at: current)
+        captureResultIfEnded(at: current)
+    }
+
+    private func captureResult(
+        after mutation: (inout FocusSessionTimer, Date) -> Void,
+        at current: Date
+    ) {
+        mutation(&session, current)
+        now = current
+        captureResultIfEnded(at: current)
+    }
+
+    private func captureResultIfEnded(at current: Date) {
+        guard result == nil else { return }
+        result = session.makeResult(for: task, at: current)
     }
 
     private func runDisplayClock() async {
         refresh(at: Date())
         while !Task.isCancelled {
-            if session.phase == .ended { break }
+            if result != nil { break }
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
             refresh(at: Date())

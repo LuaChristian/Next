@@ -12,20 +12,23 @@ struct RecommendationView: View {
     @Environment(\.dismiss) private var dismiss
 
     let recommendations: [TaskItem]
+    let hasAnyTasks: Bool
 
     @State private var currentIndex = 0
     @State private var focusTask: TaskItem?
 
-    init(availableTime: TimeOption, energy: EnergyLevel) {
+    init(availableTime: TimeOption, energy: EnergyLevel, tasks: [TaskItem]) {
         recommendations = RecommendationEngine().recommendations(
-            tasks: SampleTasks.all,
+            tasks: tasks,
             availableTime: availableTime,
             energy: energy
         )
+        hasAnyTasks = !tasks.isEmpty
     }
 
-    init(recommendations: [TaskItem]) {
+    init(recommendations: [TaskItem], hasAnyTasks: Bool? = nil) {
         self.recommendations = recommendations
+        self.hasAnyTasks = hasAnyTasks ?? !recommendations.isEmpty
     }
 
     private var currentTask: TaskItem? {
@@ -137,14 +140,18 @@ struct RecommendationView: View {
 
     private var emptyContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("NOTHING FITS RIGHT NOW")
+            Text(hasAnyTasks ? "NOTHING FITS RIGHT NOW" : "NO TASKS YET")
                 .font(.system(size: 13, weight: .medium))
                 .tracking(2.2)
                 .foregroundStyle(.secondary)
 
-            Text("None of your current tasks fit this time and energy combination.")
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(.primary)
+            Text(
+                hasAnyTasks
+                    ? "None of your tasks fit this time and energy combination."
+                    : "Plant a goal and add a task before asking what's next."
+            )
+            .font(.system(size: 28, weight: .regular))
+            .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -174,7 +181,19 @@ struct RecommendationView: View {
 
 #Preview("Recommendation") {
     NavigationStack {
-        RecommendationView(availableTime: .thirty, energy: .good)
+        RecommendationView(
+            availableTime: .thirty,
+            energy: .good,
+            tasks: [
+                TaskItem(
+                    title: "Review amino acids",
+                    durationMinutes: 30,
+                    energyRequired: .good,
+                    area: "Education",
+                    goal: "Study for MCAT"
+                )
+            ]
+        )
     }
 }
 

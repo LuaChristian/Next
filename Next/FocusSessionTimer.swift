@@ -20,6 +20,7 @@ struct FocusSessionTimer: Equatable {
     private var totalPaused: TimeInterval = 0
     private var pausedAt: Date?
     private var endedAt: Date?
+    private var endedNaturally = false
 
     private(set) var phase: FocusSessionPhase = .running
 
@@ -59,7 +60,7 @@ struct FocusSessionTimer: Equatable {
     mutating func pause(at now: Date) {
         guard phase == .running else { return }
         if remaining(at: now) <= 0 {
-            finish(at: now)
+            end(at: now, naturally: true)
             return
         }
         pausedAt = now
@@ -75,17 +76,32 @@ struct FocusSessionTimer: Equatable {
     }
 
     mutating func finish(at now: Date) {
+        end(at: now, naturally: false)
+    }
+
+    mutating func evaluateCompletion(at now: Date) {
+        guard phase == .running, remaining(at: now) <= 0 else { return }
+        end(at: now, naturally: true)
+    }
+
+    func makeResult(for task: TaskItem, at now: Date) -> FocusSessionResult? {
+        guard phase == .ended else { return nil }
+        return FocusSessionResult(
+            task: task,
+            plannedDurationSeconds: duration,
+            focusedDurationSeconds: activeElapsed(at: now),
+            endedNaturally: endedNaturally
+        )
+    }
+
+    private mutating func end(at now: Date, naturally: Bool) {
         guard phase != .ended else { return }
         if phase == .paused, let pausedAt {
             totalPaused += now.timeIntervalSince(pausedAt)
             self.pausedAt = nil
         }
         endedAt = now
+        endedNaturally = naturally
         phase = .ended
-    }
-
-    mutating func evaluateCompletion(at now: Date) {
-        guard phase == .running, remaining(at: now) <= 0 else { return }
-        finish(at: now)
     }
 }

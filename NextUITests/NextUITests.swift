@@ -15,8 +15,7 @@ final class NextUITests: XCTestCase {
 
     @MainActor
     func testRecommendationFlow() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSeededApp()
 
         let whatsNext = app.buttons["WHAT'S NEXT?"]
         XCTAssertFalse(whatsNext.isEnabled)
@@ -42,11 +41,11 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(notThisOne.isEnabled)
 
         notThisOne.tap()
-        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
 
         notThisOne.tap()
-        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
         XCTAssertFalse(notThisOne.isEnabled)
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -59,8 +58,7 @@ final class NextUITests: XCTestCase {
 
     @MainActor
     func testFocusSessionFromCurrentRecommendation() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSeededApp()
         navigateToFirstRecommendation(in: app)
 
         app.buttons["START SESSION →"].tap()
@@ -78,11 +76,44 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.buttons["PAUSE"].waitForExistence(timeout: 2))
 
         app.buttons["Finish early"].tap()
-        XCTAssertTrue(app.staticTexts["SESSION ENDED"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["Did you finish it?"].exists)
+        XCTAssertTrue(app.buttons["YES"].exists)
+        XCTAssertTrue(app.buttons["NOT YET"].exists)
+        XCTAssertFalse(app.buttons["YES"].isSelected)
+        XCTAssertFalse(app.buttons["NOT YET"].isSelected)
+        XCTAssertFalse(app.buttons["WHAT'S NEXT? →"].isEnabled)
+        XCTAssertFalse(app.buttons["I'M DONE"].isEnabled)
         XCTAssertFalse(app.buttons["PAUSE"].exists)
-        XCTAssertFalse(app.buttons["RESUME"].exists)
+        XCTAssertFalse(app.buttons["Finish early"].exists)
 
-        app.buttons["Done"].tap()
+        app.buttons["YES"].tap()
+        XCTAssertTrue(app.buttons["WHAT'S NEXT? →"].isEnabled)
+        app.buttons["WHAT'S NEXT? →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["30 min"].isSelected)
+        XCTAssertTrue(app.buttons["Good"].isSelected)
+    }
+
+    @MainActor
+    func testCompletionNotYetReturnsHome() throws {
+        let app = launchSeededApp()
+        navigateToFirstRecommendation(in: app)
+
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["I'M DONE"].isEnabled)
+
+        app.buttons["NOT YET"].tap()
+        XCTAssertTrue(app.buttons["I'M DONE"].isEnabled)
+        app.buttons["I'M DONE"].tap()
+
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["30 min"].isSelected)
         XCTAssertTrue(app.buttons["Good"].isSelected)
@@ -90,19 +121,82 @@ final class NextUITests: XCTestCase {
 
     @MainActor
     func testFocusUsesAcceptedRecommendationDuration() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSeededApp()
         navigateToFirstRecommendation(in: app)
 
         app.buttons["Not this one"].tap()
-        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
 
         app.buttons["START SESSION →"].tap()
 
-        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["KEEP YOUR SPACE ORGANIZED"].exists)
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
         XCTAssertTrue(timerIsNear(minutes: 15, in: app))
         XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+    }
+
+    @MainActor
+    func testUserCreatedGoalAndTaskFeedRecommendation() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+
+        app.buttons["+ PLANT A GOAL"].tap()
+        let goalField = app.textFields["Goal title"]
+        XCTAssertTrue(goalField.waitForExistence(timeout: 2))
+        goalField.tap()
+        goalField.typeText("Study for MCAT")
+        app.buttons["Education"].tap()
+        app.buttons["High"].tap()
+        app.buttons["PLANT GOAL →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+
+        app.buttons["+ ADD TASK"].tap()
+        let taskField = app.textFields["Task title"]
+        XCTAssertTrue(taskField.waitForExistence(timeout: 2))
+        taskField.tap()
+        taskField.typeText("Review amino acids")
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["ADD TASK →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.tabBars.buttons["Home"].tap()
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.staticTexts["30 MINUTES"].exists)
+        XCTAssertTrue(app.staticTexts["EDUCATION"].exists)
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].exists)
+
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["NOT YET"].tap()
+        app.buttons["I'M DONE"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+    }
+
+    private func launchSeededApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN"]
+        app.launch()
+        return app
     }
 
     @MainActor

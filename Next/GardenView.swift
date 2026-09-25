@@ -1,0 +1,134 @@
+//
+//  GardenView.swift
+//  Next
+//
+//  Created by Christian Lua-Lua on 9/25/26.
+//
+
+import SwiftUI
+
+struct GardenView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPlanting = false
+
+    private var canvasColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.11, green: 0.12, blue: 0.11)
+            : Color(red: 0.98, green: 0.97, blue: 0.94)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("GARDEN")
+                .font(.system(size: 13, weight: .medium))
+                .tracking(3.2)
+                .foregroundStyle(.secondary)
+
+            if store.goals.isEmpty {
+                emptyState
+            } else {
+                goalList
+            }
+
+            Spacer(minLength: 24)
+
+            plantAction
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 12)
+        .padding(.bottom, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(canvasColor.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(for: UUID.self) { goalID in
+            GoalDetailView(goalID: goalID)
+        }
+        .navigationDestination(isPresented: $isPlanting) {
+            PlantGoalView()
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Nothing planted yet.")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(.primary)
+                .padding(.top, 48)
+
+            Text("Start with something you want to make progress on.")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var goalList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Your goals")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .padding(.top, 36)
+                    .padding(.bottom, 12)
+
+                ForEach(store.goals) { goal in
+                    NavigationLink(value: goal.id) {
+                        goalRow(goal)
+                    }
+                    .buttonStyle(.plain)
+
+                    if goal.id != store.goals.last?.id {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(height: 0.5)
+                    }
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func goalRow(_ goal: Goal) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(goal.title)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.primary)
+
+            Text("\(goal.area.title.uppercased())  ·  \(goal.taskCountLabel)")
+                .font(.system(size: 13, weight: .medium))
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 22)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var plantAction: some View {
+        VStack(spacing: 18) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.12))
+                .frame(height: 0.5)
+
+            Button("+ PLANT A GOAL") {
+                isPlanting = true
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .tracking(2.2)
+            .foregroundStyle(Color.accentColor)
+            .frame(maxWidth: .infinity, minHeight: 44)
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.12))
+                .frame(height: 0.5)
+        }
+    }
+}
+
+#Preview {
+    NavigationStack {
+        GardenView()
+    }
+    .environment(AppStore())
+}

@@ -42,6 +42,7 @@ enum EnergyLevel: CaseIterable, Identifiable {
 }
 
 struct HomeView: View {
+    @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedTime: TimeOption?
@@ -75,7 +76,11 @@ struct HomeView: View {
         .background(canvasColor.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $recommendationInput) { input in
-            RecommendationView(availableTime: input.time, energy: input.energy)
+            RecommendationView(
+                availableTime: input.time,
+                energy: input.energy,
+                tasks: store.allTasks
+            )
         }
     }
 
@@ -156,35 +161,6 @@ struct HomeView: View {
     }
 }
 
-private struct SelectionOption: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(.system(size: 16, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                    .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.85)
-                    .lineLimit(1)
-
-                Capsule()
-                    .fill(isSelected ? Color.accentColor : Color.clear)
-                    .frame(width: 18, height: 2)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.18), value: isSelected)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
 private struct RecommendationInput: Hashable, Identifiable {
     let id = UUID()
     let time: TimeOption
@@ -195,4 +171,5 @@ private struct RecommendationInput: Hashable, Identifiable {
     NavigationStack {
         HomeView()
     }
+    .environment(AppStore())
 }
