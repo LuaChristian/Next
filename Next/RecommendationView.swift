@@ -9,10 +9,12 @@ import SwiftUI
 
 struct RecommendationView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     let recommendations: [TaskItem]
 
     @State private var currentIndex = 0
+    @State private var focusTask: TaskItem?
 
     init(availableTime: TimeOption, energy: EnergyLevel) {
         recommendations = RecommendationEngine().recommendations(
@@ -67,6 +69,12 @@ struct RecommendationView: View {
         .background(canvasColor.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .fullScreenCover(item: $focusTask) { task in
+            FocusView(task: task) {
+                focusTask = nil
+                dismiss()
+            }
+        }
     }
 
     private var brand: some View {
@@ -144,11 +152,13 @@ struct RecommendationView: View {
 
     private var actions: some View {
         VStack(spacing: 8) {
-            Button("START SESSION →") {}
-                .font(.system(size: 13, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(Color.accentColor)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            Button("START SESSION →") {
+                focusTask = currentTask
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .tracking(2.2)
+            .foregroundStyle(Color.accentColor)
+            .frame(maxWidth: .infinity, minHeight: 44)
 
             Button("Not this one") {
                 guard hasAnotherRecommendation else { return }

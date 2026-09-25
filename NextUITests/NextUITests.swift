@@ -56,4 +56,67 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Good"].isSelected)
         XCTAssertTrue(whatsNext.isEnabled)
     }
+
+    @MainActor
+    func testFocusSessionFromCurrentRecommendation() throws {
+        let app = XCUIApplication()
+        app.launch()
+        navigateToFirstRecommendation(in: app)
+
+        app.buttons["START SESSION →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
+        XCTAssertTrue(timerIsNear(minutes: 25, in: app))
+        XCTAssertTrue(app.buttons["PAUSE"].exists)
+
+        app.buttons["PAUSE"].tap()
+        XCTAssertTrue(app.buttons["RESUME"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Finish early"].exists)
+
+        app.buttons["RESUME"].tap()
+        XCTAssertTrue(app.buttons["PAUSE"].waitForExistence(timeout: 2))
+
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["SESSION ENDED"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["PAUSE"].exists)
+        XCTAssertFalse(app.buttons["RESUME"].exists)
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["30 min"].isSelected)
+        XCTAssertTrue(app.buttons["Good"].isSelected)
+    }
+
+    @MainActor
+    func testFocusUsesAcceptedRecommendationDuration() throws {
+        let app = XCUIApplication()
+        app.launch()
+        navigateToFirstRecommendation(in: app)
+
+        app.buttons["Not this one"].tap()
+        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
+
+        app.buttons["START SESSION →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["KEEP YOUR SPACE ORGANIZED"].exists)
+        XCTAssertTrue(timerIsNear(minutes: 15, in: app))
+        XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+    }
+
+    @MainActor
+    private func navigateToFirstRecommendation(in app: XCUIApplication) {
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+    }
+
+    private func timerIsNear(minutes: Int, in app: XCUIApplication) -> Bool {
+        let timer = app.staticTexts["focusTimer"]
+        guard timer.waitForExistence(timeout: 2) else { return false }
+        let value = timer.value as? String ?? ""
+        return value.hasPrefix("\(minutes) minutes") || value.hasPrefix("\(minutes - 1) minutes")
+    }
 }
