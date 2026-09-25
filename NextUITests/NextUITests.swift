@@ -10,32 +10,50 @@ import XCTest
 final class NextUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testRecommendationFlow() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
+        let whatsNext = app.buttons["WHAT'S NEXT?"]
+        XCTAssertFalse(whatsNext.isEnabled)
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+        app.buttons["30 min"].tap()
+        XCTAssertFalse(whatsNext.isEnabled)
+
+        app.buttons["Good"].tap()
+        XCTAssertTrue(whatsNext.isEnabled)
+
+        whatsNext.tap()
+
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.staticTexts["25 MINUTES"].exists)
+        XCTAssertTrue(app.staticTexts["EDUCATION"].exists)
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["Fits the time you have."].exists)
+        XCTAssertTrue(app.staticTexts["Matches your energy."].exists)
+        XCTAssertTrue(app.buttons["START SESSION →"].exists)
+
+        let notThisOne = app.buttons["Not this one"]
+        XCTAssertTrue(notThisOne.isEnabled)
+
+        notThisOne.tap()
+        XCTAssertTrue(app.staticTexts["Clean your space"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+
+        notThisOne.tap()
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertFalse(notThisOne.isEnabled)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["30 min"].isSelected)
+        XCTAssertTrue(app.buttons["Good"].isSelected)
+        XCTAssertTrue(whatsNext.isEnabled)
     }
 }

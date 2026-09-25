@@ -46,6 +46,7 @@ struct HomeView: View {
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
+    @State private var recommendationInput: RecommendationInput?
 
     private var canProceed: Bool {
         selectedTime != nil && selectedEnergy != nil
@@ -72,6 +73,10 @@ struct HomeView: View {
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(canvasColor.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(item: $recommendationInput) { input in
+            RecommendationView(availableTime: input.time, energy: input.energy)
+        }
     }
 
     private var header: some View {
@@ -134,12 +139,15 @@ struct HomeView: View {
                 .fill(Color.primary.opacity(0.12))
                 .frame(height: 0.5)
 
-            Button("WHAT'S NEXT?") {}
-                .font(.system(size: 13, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(canProceed ? Color.accentColor : Color.secondary.opacity(0.45))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(!canProceed)
+            Button("WHAT'S NEXT?") {
+                guard let time = selectedTime, let energy = selectedEnergy else { return }
+                recommendationInput = RecommendationInput(time: time, energy: energy)
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .tracking(2.2)
+            .foregroundStyle(canProceed ? Color.accentColor : Color.secondary.opacity(0.45))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .disabled(!canProceed)
 
             Rectangle()
                 .fill(Color.primary.opacity(0.12))
@@ -177,6 +185,14 @@ private struct SelectionOption: View {
     }
 }
 
+private struct RecommendationInput: Hashable, Identifiable {
+    let id = UUID()
+    let time: TimeOption
+    let energy: EnergyLevel
+}
+
 #Preview {
-    HomeView()
+    NavigationStack {
+        HomeView()
+    }
 }
