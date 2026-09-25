@@ -488,3 +488,149 @@ struct PersistenceTests {
         #expect(tasks.first?.asTaskItem.area == "Education")
     }
 }
+
+struct OnboardingTests {
+    private func makeDefaults() -> UserDefaults {
+        let name = "next.onboarding.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    @Test func suggestedGoalsMapToCorrectAreas() {
+        #expect(OnboardingGoalSuggestion.suggestion(titled: "Study for an exam")?.area == .education)
+        #expect(OnboardingGoalSuggestion.suggestion(titled: "Build strength")?.area == .fitness)
+    }
+
+    @Test func multipleAreasCanBeSelected() {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleArea(.fitness)
+
+        #expect(state.selectedAreas == [.education, .fitness])
+        #expect(state.canContinueFromAreas)
+    }
+
+    @Test func removingAnAreaClearsItsPendingGoals() {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleSuggestion(OnboardingGoalSuggestion.suggestion(titled: "Study for an exam")!)
+
+        #expect(state.pendingGoals.contains { $0.title == "Study for an exam" })
+
+        state.toggleArea(.education)
+
+        #expect(state.selectedAreas.isEmpty)
+        #expect(state.pendingGoals.isEmpty)
+        #expect(!state.canContinueFromGoals)
+    }
+
+    @Test func customGoalStaysPendingWithSelectedArea() {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleArea(.creative)
+        state.addCustomGoal(title: "Learn iOS development", area: .creative)
+
+        #expect(state.pendingGoals.count == 1)
+        #expect(state.pendingGoals.first?.title == "Learn iOS development")
+        #expect(state.pendingGoals.first?.area == .creative)
+    }
+
+    @MainActor
+    @Test func completionPersistsGoalsWithoutTasks() throws {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleArea(.fitness)
+        state.toggleSuggestion(OnboardingGoalSuggestion.suggestion(titled: "Study for an exam")!)
+        state.toggleSuggestion(OnboardingGoalSuggestion.suggestion(titled: "Build strength")!)
+
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        state.complete(into: context, defaults: defaults)
+
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 2)
+        #expect(goals.contains { $0.title == "Study for an exam" && $0.area == .education })
+        #expect(goals.contains { $0.title == "Build strength" && $0.area == .fitness })
+        #expect(goals.allSatisfy { $0.priority == .normal })
+        #expect(goals.allSatisfy { $0.tasks.isEmpty })
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+    }
+
+    @MainActor
+    @Test func customGoalPersistsWithNormalPriority() throws {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleArea(.creative)
+        state.addCustomGoal(title: "Learn iOS development", area: .creative)
+
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        state.complete(into: context, defaults: makeDefaults())
+
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Learn iOS development")
+        #expect(goals.first?.area == .creative)
+        #expect(goals.first?.priority == .normal)
+        #expect(goals.first?.tasks.isEmpty == true)
+    }
+
+    @Test func skipCompletesOnboardingWithoutGoals() {
+        var state = OnboardingState()
+        let defaults = makeDefaults()
+        state.skip(defaults: defaults)
+
+        #expect(state.didCommit)
+        #expect(state.pendingGoals.isEmpty)
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+    }
+
+    @MainActor
+    @Test func existingGardenWithoutFlagSkipsOnboarding() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let existing = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(existing)
+        try context.save()
+
+        let defaults = makeDefaults()
+        #expect(defaults.object(forKey: OnboardingPreference.completedKey) == nil)
+
+        let completed = OnboardingPreference.resolveCompleted(
+            goalsExist: true,
+            arguments: [],
+            defaults: defaults
+        )
+
+        #expect(completed)
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+        #expect(existing.title == "Study for MCAT")
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+    }
+
+    @Test func completedFlagPreventsOnboardingOnRelaunch() {
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+
+        let completed = OnboardingPreference.resolveCompleted(
+            goalsExist: false,
+            arguments: [],
+            defaults: defaults
+        )
+
+        #expect(completed)
+    }
+
+    @MainActor
+    @Test func completingOnboardingTwiceDoesNotDuplicateGoals() throws {
+        var state = OnboardingState()
+        state.toggleArea(.education)
+        state.toggleSuggestion(OnboardingGoalSuggestion.suggestion(titled: "Study for an exam")!)
+
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        state.complete(into: context, defaults: defaults)
+        state.complete(into: context, defaults: defaults)
+
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+    }
+}

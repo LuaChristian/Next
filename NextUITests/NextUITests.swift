@@ -138,7 +138,7 @@ final class NextUITests: XCTestCase {
     @MainActor
     func testUserCreatedGoalAndTaskFeedRecommendation() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_IN_MEMORY"]
+        app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
         app.launch()
 
         app.tabBars.buttons["Garden"].tap()
@@ -197,7 +197,10 @@ final class NextUITests: XCTestCase {
     func testGardenPersistsAcrossProcessTermination() throws {
         let storeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("next-ui-\(UUID().uuidString).store")
-        let storeArguments = ["UITEST_STORE_URL", storeURL.path]
+        let storeArguments = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_ONBOARDING_COMPLETED"
+        ]
 
         let app = XCUIApplication()
         app.launchArguments = storeArguments
@@ -251,6 +254,165 @@ final class NextUITests: XCTestCase {
         app.buttons["ADD TASK →"].tap()
 
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testFreshOnboardingCreatesGardenGoal() throws {
+        let app = launchFreshOnboarding()
+
+        XCTAssertTrue(app.staticTexts["Make your free time count."].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.tabBars.buttons["Home"].exists)
+
+        app.buttons["GET STARTED →"].tap()
+        XCTAssertTrue(app.staticTexts["WHAT MATTERS TO YOU?"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["NEXT →"].isEnabled)
+
+        app.buttons["Education"].tap()
+        XCTAssertTrue(app.buttons["NEXT →"].isEnabled)
+        app.buttons["NEXT →"].tap()
+
+        XCTAssertTrue(app.staticTexts["WHAT ARE YOU\nWORKING TOWARD?"].waitForExistence(timeout: 2)
+                      || app.staticTexts["WORKING TOWARD?"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["CONTINUE →"].isEnabled)
+
+        app.buttons["Study for an exam"].tap()
+        XCTAssertTrue(app.buttons["CONTINUE →"].isEnabled)
+        app.buttons["CONTINUE →"].tap()
+
+        XCTAssertTrue(app.staticTexts["YOU'RE READY."].waitForExistence(timeout: 2))
+        app.buttons["START USING NEXT →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testOnboardingSuggestedAndCustomGoalsAppearInGarden() throws {
+        let app = launchFreshOnboarding()
+
+        XCTAssertTrue(app.buttons["GET STARTED →"].waitForExistence(timeout: 2))
+        app.buttons["GET STARTED →"].tap()
+        XCTAssertTrue(app.buttons["Education"].waitForExistence(timeout: 2))
+        app.buttons["Education"].tap()
+        app.buttons["Creative"].tap()
+        app.buttons["NEXT →"].tap()
+
+        XCTAssertTrue(app.buttons["Study for an exam"].waitForExistence(timeout: 2))
+        app.buttons["Study for an exam"].tap()
+        app.buttons["+ ADD MY OWN GOAL"].tap()
+
+        let field = app.textFields["Goal title"]
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
+        field.tap()
+        field.typeText("Build Next")
+        app.buttons["Creative"].tap()
+        app.buttons["ADD GOAL →"].tap()
+
+        XCTAssertTrue(app.buttons["CONTINUE →"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["CONTINUE →"].isEnabled)
+        app.buttons["CONTINUE →"].tap()
+        app.buttons["START USING NEXT →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Build Next"].exists)
+    }
+
+    @MainActor
+    func testSkipOnboardingLeavesGardenEmpty() throws {
+        let app = launchFreshOnboarding()
+
+        XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 2))
+        app.buttons["Skip for now"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testCompletedOnboardingSurvivesProcessTermination() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-onboarding-\(UUID().uuidString).store")
+        let suite = "next.uitest.onboarding.\(UUID().uuidString)"
+        let storeArguments = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_DEFAULTS_SUITE", suite
+        ]
+
+        let app = XCUIApplication()
+        app.launchArguments = storeArguments + ["UITEST_FRESH_ONBOARDING"]
+        app.launch()
+
+        completeEducationExamOnboarding(in: app)
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+
+        app.terminate()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testSkipSurvivesProcessTermination() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-onboarding-skip-\(UUID().uuidString).store")
+        let suite = "next.uitest.onboarding.skip.\(UUID().uuidString)"
+        let storeArguments = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_DEFAULTS_SUITE", suite
+        ]
+
+        let app = XCUIApplication()
+        app.launchArguments = storeArguments + ["UITEST_FRESH_ONBOARDING"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 2))
+        app.buttons["Skip for now"].tap()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+
+        app.terminate()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+    }
+
+    private func launchFreshOnboarding() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_IN_MEMORY",
+            "UITEST_FRESH_ONBOARDING",
+            "UITEST_DEFAULTS_SUITE",
+            "next.uitest.onboarding.\(UUID().uuidString)"
+        ]
+        app.launch()
+        return app
+    }
+
+    private func completeEducationExamOnboarding(in app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["GET STARTED →"].waitForExistence(timeout: 2))
+        app.buttons["GET STARTED →"].tap()
+        XCTAssertTrue(app.buttons["Education"].waitForExistence(timeout: 2))
+        app.buttons["Education"].tap()
+        app.buttons["NEXT →"].tap()
+        XCTAssertTrue(app.buttons["Study for an exam"].waitForExistence(timeout: 2))
+        app.buttons["Study for an exam"].tap()
+        app.buttons["CONTINUE →"].tap()
+        XCTAssertTrue(app.buttons["START USING NEXT →"].waitForExistence(timeout: 2))
+        app.buttons["START USING NEXT →"].tap()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
     }
 
     private func launchSeededApp() -> XCUIApplication {
