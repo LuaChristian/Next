@@ -8,8 +8,9 @@
 import SwiftUI
 
 struct FocusView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let task: TaskItem
     let onDone: () -> Void
@@ -24,12 +25,6 @@ struct FocusView: View {
         _session = State(initialValue: FocusSessionTimer(durationMinutes: task.durationMinutes))
     }
 
-    private var canvasColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.11, green: 0.12, blue: 0.11)
-            : Color(red: 0.98, green: 0.97, blue: 0.94)
-    }
-
     var body: some View {
         if let result {
             CompletionView(result: result, onFinished: onDone)
@@ -41,9 +36,9 @@ struct FocusView: View {
     private var focusContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("NEXT")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(3.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
 
             taskHeader
                 .padding(.top, 36)
@@ -57,11 +52,7 @@ struct FocusView: View {
 
             activeControls
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 16)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(canvasColor.ignoresSafeArea())
+        .nextScrollableCanvas(top: 16)
         .task { await runDisplayClock() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -72,28 +63,34 @@ struct FocusView: View {
     private var taskHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(task.title)
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(28, relativeTo: .title)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text(task.goal.uppercased())
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.8)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var timerDisplay: some View {
         Text(session.remainingDisplay(at: now))
-            .font(.system(size: 72, weight: .regular, design: .monospaced))
+            .font(.system(size: timerSize, weight: .regular, design: .monospaced))
             .monospacedDigit()
-            .foregroundStyle(.primary)
-            .minimumScaleFactor(0.6)
+            .foregroundStyle(NextTheme.ink)
+            .minimumScaleFactor(0.55)
             .lineLimit(1)
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Time remaining")
             .accessibilityValue(accessibilityRemaining)
             .accessibilityIdentifier("focusTimer")
+    }
+
+    private var timerSize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 48 : 72
     }
 
     private var accessibilityRemaining: String {
@@ -105,28 +102,24 @@ struct FocusView: View {
 
     private var activeControls: some View {
         VStack(spacing: 18) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+            NextHairline()
 
             Button(session.phase == .paused ? "RESUME" : "PAUSE") {
                 togglePause()
             }
-            .font(.system(size: 13, weight: .semibold))
+            .nextFont(13, weight: .semibold)
             .tracking(2.2)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(NextTheme.botanical)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .animation(.easeInOut(duration: 0.18), value: session.phase)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: session.phase)
 
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+            NextHairline()
 
             Button("Finish early") {
                 captureResult(after: { $0.finish(at: $1) }, at: Date())
             }
-            .font(.system(size: 16, weight: .regular))
-            .foregroundStyle(.secondary)
+            .nextFont(16)
+            .foregroundStyle(NextTheme.secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
         }
     }

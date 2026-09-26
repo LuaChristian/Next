@@ -29,13 +29,16 @@ struct NextApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if hasCompletedOnboarding {
-                ContentView()
-            } else {
-                OnboardingFlow {
-                    hasCompletedOnboarding = true
+            Group {
+                if hasCompletedOnboarding {
+                    ContentView()
+                } else {
+                    OnboardingFlow {
+                        hasCompletedOnboarding = true
+                    }
                 }
             }
+            .preferredColorScheme(.light)
         }
         .modelContainer(container)
     }

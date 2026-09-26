@@ -63,7 +63,8 @@ final class NextUITests: XCTestCase {
 
         app.buttons["START SESSION →"].tap()
 
-        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
         XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
         XCTAssertTrue(timerIsNear(minutes: 25, in: app))
         XCTAssertTrue(app.buttons["PAUSE"].exists)
@@ -165,7 +166,11 @@ final class NextUITests: XCTestCase {
         app.buttons["Good"].tap()
         app.buttons["ADD TASK →"].tap()
 
-        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts["Review amino acids"].exists
+                || app.descendants(matching: .any)["goalTask-Review amino acids"].exists
+        )
 
         app.tabBars.buttons["Home"].tap()
         app.buttons["30 min"].tap()
@@ -253,7 +258,11 @@ final class NextUITests: XCTestCase {
         app.buttons["Good"].tap()
         app.buttons["ADD TASK →"].tap()
 
-        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts["Review amino acids"].exists
+                || app.descendants(matching: .any)["goalTask-Review amino acids"].exists
+        )
     }
 
     @MainActor
@@ -462,6 +471,284 @@ final class NextUITests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testHistoryShowsCompletedSession() throws {
+        let app = launchSeededApp()
+        navigateToFirstRecommendation(in: app)
+
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["YES"].tap()
+        app.buttons["I'M DONE"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["History"].tap()
+
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["TODAY"].exists)
+        XCTAssertEqual(app.staticTexts["1"].firstMatch.exists, true)
+        XCTAssertTrue(app.staticTexts["SESSION"].exists)
+        XCTAssertTrue(app.staticTexts["TASK FINISHED"].exists)
+        XCTAssertFalse(app.staticTexts["NO FOCUS SESSIONS YET."].exists)
+    }
+
+    @MainActor
+    func testSeededHistoryGroupsRecentWork() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_HISTORY"]
+        app.launch()
+        app.tabBars.buttons["History"].tap()
+
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
+        XCTAssertTrue(app.staticTexts["TODAY"].exists)
+        XCTAssertTrue(app.staticTexts["YESTERDAY"].exists)
+        XCTAssertTrue(app.staticTexts["RECENT"].exists)
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["Build Next"].exists)
+        XCTAssertTrue(app.staticTexts["Practice arrays"].exists)
+        XCTAssertTrue(app.staticTexts["INTERVIEW PREPARATION"].exists)
+        XCTAssertTrue(app.staticTexts["Read chapter"].exists)
+        XCTAssertTrue(app.staticTexts["FOCUSED"].exists)
+        XCTAssertFalse(app.staticTexts["NO FOCUS SESSIONS YET."].exists)
+        attachScreenshot(of: app, named: "Seeded History")
+    }
+
+    @MainActor
+    func testHistorySurvivesProcessTermination() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-history-\(UUID().uuidString).store")
+        let suite = "next.uitest.history.\(UUID().uuidString)"
+        let storeArguments = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_DEFAULTS_SUITE", suite,
+            "UITEST_ONBOARDING_COMPLETED"
+        ]
+
+        let app = XCUIApplication()
+        app.launchArguments = storeArguments + ["UITEST_SEED_HISTORY"]
+        app.launch()
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.terminate()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
+        XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
+    }
+
+    @MainActor
+    func testWhitespaceGoalTitleCannotBePlanted() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
+        app.launch()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 2))
+        app.buttons["+ PLANT A GOAL"].tap()
+
+        let goalField = app.textFields["Goal title"]
+        XCTAssertTrue(goalField.waitForExistence(timeout: 2))
+        goalField.tap()
+        goalField.typeText("     ")
+        app.buttons["Education"].tap()
+        XCTAssertFalse(app.buttons["PLANT GOAL →"].isEnabled)
+    }
+
+    @MainActor
+    func testLargeDynamicTypeHistoryRemainsReadable() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_HISTORY",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        app.launch()
+        app.tabBars.buttons["History"].tap()
+
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
+        XCTAssertTrue(app.staticTexts["FOCUSED"].exists)
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        attachScreenshot(of: app, named: "Large Dynamic Type — History")
+    }
+
+    @MainActor
+    func testCompleteV1Walkthrough() throws {
+        let review = WalkthroughCapture(self)
+
+        let app = launchFreshOnboarding()
+        XCTAssertTrue(app.staticTexts["Make your free time count."].waitForExistence(timeout: 3))
+        review.capture(app, "01 Welcome")
+
+        app.buttons["GET STARTED →"].tap()
+        XCTAssertTrue(app.staticTexts["WHAT MATTERS TO YOU?"].waitForExistence(timeout: 2))
+        review.capture(app, "02 Areas")
+
+        app.buttons["Education"].tap()
+        app.buttons["Creative"].tap()
+        review.capture(app, "03 Areas selected")
+        app.buttons["NEXT →"].tap()
+
+        XCTAssertTrue(app.buttons["Study for an exam"].waitForExistence(timeout: 2))
+        review.capture(app, "04 Goals")
+
+        app.buttons["Study for an exam"].tap()
+        if !app.buttons["Build a project"].exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.buttons["Build a project"].waitForExistence(timeout: 2))
+        app.buttons["Build a project"].tap()
+        review.capture(app, "05 Goals selected")
+        app.buttons["CONTINUE →"].tap()
+
+        XCTAssertTrue(app.staticTexts["YOU'RE READY."].waitForExistence(timeout: 2))
+        review.capture(app, "06 Ready")
+        app.buttons["START USING NEXT →"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        review.capture(app, "07 Home")
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+        review.capture(app, "08 Garden after onboarding")
+        app.staticTexts["Study for an exam"].tap()
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        review.capture(app, "09 Goal Detail no tasks")
+
+        app.buttons["+ ADD TASK"].tap()
+        let taskField = app.textFields["Task title"]
+        XCTAssertTrue(taskField.waitForExistence(timeout: 2))
+        taskField.tap()
+        taskField.typeText("Review amino acids")
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        review.capture(app, "10 Add Task")
+        app.buttons["ADD TASK →"].tap()
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 3))
+        review.capture(app, "11 Goal Detail with task")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.tabBars.buttons["Home"].tap()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        review.capture(app, "12 Home ready for What's Next")
+        app.buttons["WHAT'S NEXT?"].tap()
+
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        review.capture(app, "13 Recommendation")
+        app.buttons["START SESSION →"].tap()
+
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        review.capture(app, "14 Focus")
+        app.buttons["Finish early"].tap()
+
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        review.capture(app, "15 Completion")
+        app.buttons["YES"].tap()
+        review.capture(app, "16 Completion answered")
+        app.buttons["I'M DONE"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
+        review.capture(app, "17 Garden after first session")
+        app.staticTexts["Study for an exam"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2)
+                      || app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
+        review.capture(app, "18 Goal Detail after first session")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        review.capture(app, "19 History after first session")
+        app.terminate()
+
+        let growth = launchGrowthShowcase()
+        review.capture(growth, "20 Garden five stages")
+        for title in ["Beginning study", "First growth", "Young plant", "Growing plant", "Mature plant"] {
+            let row = gardenRow(title, in: growth)
+            reveal(row, in: growth)
+            XCTAssertTrue(row.waitForExistence(timeout: 2))
+            row.tap()
+            XCTAssertTrue(growth.staticTexts[title].waitForExistence(timeout: 2))
+            review.capture(growth, "21 Goal Detail — \(title)")
+            growth.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(growth.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        }
+        growth.terminate()
+
+        let history = XCUIApplication()
+        history.launchArguments = ["UITEST_SEED_HISTORY"]
+        history.launch()
+        history.tabBars.buttons["History"].tap()
+        XCTAssertTrue(history.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        review.capture(history, "22 History populated")
+        history.swipeUp()
+        review.capture(history, "23 History scrolled")
+        history.terminate()
+
+        let empty = XCUIApplication()
+        empty.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
+        empty.launch()
+        empty.tabBars.buttons["History"].tap()
+        XCTAssertTrue(empty.staticTexts["NO FOCUS SESSIONS YET."].waitForExistence(timeout: 2))
+        review.capture(empty, "24 Empty History")
+        empty.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(empty.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        review.capture(empty, "25 Empty Garden")
+        empty.terminate()
+
+        let largeType = XCUIApplication()
+        largeType.launchArguments = [
+            "UITEST_SEED_HISTORY",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        largeType.launch()
+        largeType.tabBars.buttons["History"].tap()
+        XCTAssertTrue(largeType.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        review.capture(largeType, "26 Large Dynamic Type History")
+        largeType.tabBars.buttons["Home"].tap()
+        XCTAssertTrue(largeType.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        review.capture(largeType, "27 Large Dynamic Type Home")
+        largeType.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(largeType.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(largeType, "28 Large Dynamic Type Garden")
+    }
+
+    @MainActor
+    func testEmptyHistoryIsNeutral() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
+        app.launch()
+        app.tabBars.buttons["History"].tap()
+
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
+        XCTAssertTrue(app.staticTexts["0 MIN"].exists)
+        XCTAssertTrue(app.staticTexts["FOCUSED"].exists)
+        XCTAssertTrue(app.staticTexts["0"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["SESSIONS"].exists)
+        XCTAssertTrue(app.staticTexts["TASKS FINISHED"].exists)
+        XCTAssertTrue(app.staticTexts["NO FOCUS SESSIONS YET."].exists)
+        XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+        attachScreenshot(of: app, named: "Empty History")
+    }
+
     private func launchFreshOnboarding() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -510,10 +797,7 @@ final class NextUITests: XCTestCase {
     }
 
     private func attachScreenshot(of app: XCUIApplication, named name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        WalkthroughCapture(self).capture(app, name)
     }
 
     private func launchSeededApp() -> XCUIApplication {
@@ -536,5 +820,29 @@ final class NextUITests: XCTestCase {
         guard timer.waitForExistence(timeout: 2) else { return false }
         let value = timer.value as? String ?? ""
         return value.hasPrefix("\(minutes) minutes") || value.hasPrefix("\(minutes - 1) minutes")
+    }
+}
+
+private struct WalkthroughCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V1-Walkthrough"
+    )
+
+    let test: XCTestCase
+
+    init(_ test: XCTestCase) {
+        self.test = test
+    }
+
+    func capture(_ app: XCUIApplication, _ name: String) {
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        let file = Self.directory.appendingPathComponent("\(name).png")
+        try? screenshot.pngRepresentation.write(to: file)
     }
 }

@@ -664,6 +664,11 @@ struct GardenGrowthTests {
 
 struct GardenMetricsTests {
     @Test func focusedDurationFormatting() {
+        #expect(GardenMetrics.durationText(seconds: 0) == "0 MIN")
+        #expect(GardenMetrics.durationText(seconds: 20) == "<1 MIN")
+        #expect(GardenMetrics.durationText(seconds: 18 * 60) == "18 MIN")
+        #expect(GardenMetrics.durationText(seconds: 85 * 60) == "1H 25M")
+        #expect(GardenMetrics.durationText(seconds: 120 * 60) == "2H")
         #expect(GardenMetrics.focusedDurationLabel(seconds: 0) == "0 MIN FOCUSED")
         #expect(GardenMetrics.focusedDurationLabel(seconds: 20) == "<1 MIN FOCUSED")
         #expect(GardenMetrics.focusedDurationLabel(seconds: 18 * 60) == "18 MIN FOCUSED")
@@ -918,6 +923,286 @@ struct FocusSessionPersistenceTests {
         let second = engine.recommendations(tasks: [flashcards, amino], availableTime: .thirty, energy: .good)
         #expect(first.map(\.id) == [amino.id, flashcards.id])
         #expect(first.map(\.id) == second.map(\.id))
+    }
+}
+
+struct HistoryPresentationTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    /// Friday, 25 September 2026, noon UTC. Week (Monday start) is 21–27 Sep.
+    private var now: Date {
+        date(2026, 9, 25, 12)
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private func record(
+        title: String = "Review amino acids",
+        goal: String = "Study for MCAT",
+        minutes: Double,
+        finished: Bool,
+        at completedAt: Date
+    ) -> HistorySessionRecord {
+        HistorySessionRecord(
+            id: UUID(),
+            completedAt: completedAt,
+            focusedDurationSeconds: minutes * 60,
+            taskWasFinished: finished,
+            taskTitle: title,
+            goalTitle: goal
+        )
+    }
+
+    @Test func emptySummaryIsZero() {
+        let summary = HistoryPresentation.weeklySummary(sessions: [], calendar: calendar, referenceDate: now)
+        #expect(summary == .empty)
+    }
+
+    @Test func oneFinishedSessionThisWeek() {
+        let summary = HistoryPresentation.weeklySummary(
+            sessions: [record(minutes: 30, finished: true, at: now)],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(summary.focusedDuration == 1_800)
+        #expect(summary.sessionCount == 1)
+        #expect(summary.tasksFinished == 1)
+    }
+
+    @Test func multipleSessionsAccumulateCorrectly() {
+        let sessions = [
+            record(minutes: 30, finished: true, at: date(2026, 9, 23, 10)),
+            record(minutes: 45, finished: false, at: date(2026, 9, 24, 11)),
+            record(minutes: 20, finished: true, at: now)
+        ]
+        let summary = HistoryPresentation.weeklySummary(sessions: sessions, calendar: calendar, referenceDate: now)
+        #expect(summary.focusedDuration == 95 * 60)
+        #expect(summary.sessionCount == 3)
+        #expect(summary.tasksFinished == 2)
+    }
+
+    @Test func lastWeekIsExcludedFromThisWeek() {
+        let sessions = [
+            record(minutes: 30, finished: true, at: now),
+            record(minutes: 120, finished: true, at: date(2026, 9, 18, 10))
+        ]
+        let summary = HistoryPresentation.weeklySummary(sessions: sessions, calendar: calendar, referenceDate: now)
+        #expect(summary.focusedDuration == 1_800)
+        #expect(summary.sessionCount == 1)
+        #expect(summary.tasksFinished == 1)
+    }
+
+    @Test func weekBoundaryUsesCalendarInterval() {
+        let sundayNight = date(2026, 9, 20, 23)
+        let mondayMorning = date(2026, 9, 21, 1)
+        let sessions = [
+            record(title: "Last week", minutes: 60, finished: true, at: sundayNight),
+            record(title: "This week", minutes: 30, finished: true, at: mondayMorning)
+        ]
+        let summary = HistoryPresentation.weeklySummary(sessions: sessions, calendar: calendar, referenceDate: now)
+        #expect(summary.sessionCount == 1)
+        #expect(summary.focusedDuration == 1_800)
+    }
+
+    @Test func todayGroupUsesReferenceDate() {
+        let sections = HistoryPresentation.daySections(
+            sessions: [record(minutes: 30, finished: true, at: now)],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(sections.map(\.title) == ["TODAY"])
+    }
+
+    @Test func yesterdayGroupUsesReferenceDate() {
+        let sections = HistoryPresentation.daySections(
+            sessions: [record(minutes: 30, finished: true, at: date(2026, 9, 24, 16))],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(sections.map(\.title) == ["YESTERDAY"])
+    }
+
+    @Test func olderDateUsesLocalizedHeading() {
+        let older = date(2026, 9, 18, 10)
+        let sections = HistoryPresentation.daySections(
+            sessions: [record(minutes: 30, finished: true, at: older)],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(sections.count == 1)
+        #expect(sections[0].title == HistoryPresentation.dayTitle(for: older, calendar: calendar, referenceDate: now))
+        #expect(sections[0].title != "TODAY")
+        #expect(sections[0].title != "YESTERDAY")
+    }
+
+    @Test func sameDaySessionsAreNewestFirst() {
+        let morning = record(title: "Morning", minutes: 20, finished: false, at: date(2026, 9, 25, 9))
+        let midday = record(title: "Midday", minutes: 20, finished: false, at: date(2026, 9, 25, 11))
+        let afternoon = record(title: "Afternoon", minutes: 20, finished: false, at: date(2026, 9, 25, 14))
+        let sections = HistoryPresentation.daySections(
+            sessions: [morning, afternoon, midday],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(sections[0].sessions.map(\.taskTitle) == ["Afternoon", "Midday", "Morning"])
+    }
+
+    @Test func daySectionsAreNewestDayFirst() {
+        let sections = HistoryPresentation.daySections(
+            sessions: [
+                record(title: "Older", minutes: 20, finished: false, at: date(2026, 9, 18, 10)),
+                record(title: "Today", minutes: 20, finished: false, at: now),
+                record(title: "Yesterday", minutes: 20, finished: false, at: date(2026, 9, 24, 10))
+            ],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(sections.map(\.title) == ["TODAY", "YESTERDAY", HistoryPresentation.dayTitle(for: date(2026, 9, 18, 10), calendar: calendar, referenceDate: now)])
+    }
+
+    @Test func notYetCountsTimeButNotTasksFinished() {
+        let summary = HistoryPresentation.weeklySummary(
+            sessions: [record(minutes: 25, finished: false, at: now)],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(summary.sessionCount == 1)
+        #expect(summary.focusedDuration == 25 * 60)
+        #expect(summary.tasksFinished == 0)
+    }
+
+    @Test func yesCountsTasksFinished() {
+        let summary = HistoryPresentation.weeklySummary(
+            sessions: [record(minutes: 30, finished: true, at: now)],
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(summary.tasksFinished == 1)
+        #expect(summary.sessionCount == 1)
+    }
+
+    @Test func finishEarlyUsesActualDuration() {
+        let early = HistorySessionRecord(
+            id: UUID(),
+            completedAt: now,
+            focusedDurationSeconds: 18 * 60,
+            taskWasFinished: false,
+            taskTitle: "Review amino acids",
+            goalTitle: "Study for MCAT"
+        )
+        let summary = HistoryPresentation.weeklySummary(sessions: [early], calendar: calendar, referenceDate: now)
+        #expect(summary.focusedDuration == 1_080)
+        #expect(GardenMetrics.durationText(seconds: early.focusedDurationSeconds) == "18 MIN")
+    }
+
+    @MainActor
+    @Test func historyRecordsSurviveContainerRecreation() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-m9-\(UUID().uuidString).store")
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+            context.insert(goal)
+            let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal)
+            context.insert(task)
+            context.insert(
+                FocusSession(
+                    completedAt: now,
+                    plannedDurationSeconds: 30 * 60,
+                    focusedDurationSeconds: 18 * 60,
+                    endedNaturally: false,
+                    taskWasFinished: true,
+                    taskTitleSnapshot: "Review amino acids",
+                    goalTitleSnapshot: "Study for MCAT",
+                    goal: goal,
+                    task: task
+                )
+            )
+            try context.save()
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        let records = sessions.map(\.historyRecord)
+        let summary = HistoryPresentation.weeklySummary(sessions: records, calendar: calendar, referenceDate: now)
+
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.historyTaskTitle == "Review amino acids")
+        #expect(sessions.first?.historyGoalTitle == "Study for MCAT")
+        #expect(summary.sessionCount == 1)
+        #expect(summary.focusedDuration == 1_080)
+        #expect(summary.tasksFinished == 1)
+    }
+
+    @MainActor
+    @Test func historyDoesNotChangeGardenGrowth() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                completedAt: now,
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: true,
+                taskTitleSnapshot: "Review amino acids",
+                goalTitleSnapshot: "Study for MCAT",
+                goal: goal
+            )
+        )
+        try context.save()
+
+        #expect(goal.sessionCount == 1)
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(goal.growthStage == .sprout)
+        #expect(GardenGrowth.stage(for: goal.totalFocusedDuration) == .sprout)
+    }
+}
+
+struct NextInputTests {
+    @Test func trimmedTitleRejectsBlankAndWhitespace() {
+        #expect(NextInput.trimmedTitle("") == nil)
+        #expect(NextInput.trimmedTitle("     ") == nil)
+        #expect(NextInput.trimmedTitle("\n\t") == nil)
+    }
+
+    @Test func trimmedTitleKeepsMeaningfulText() {
+        #expect(NextInput.trimmedTitle("  Study for MCAT  ") == "Study for MCAT")
+    }
+
+    @Test func onboardingRejectsWhitespaceCustomGoal() {
+        var state = OnboardingState()
+        state.selectedAreas = [.creative]
+        state.addCustomGoal(title: "   ", area: .creative)
+        #expect(state.customGoals.isEmpty)
+        #expect(state.canContinueFromGoals == false)
+    }
+
+    @Test func completionUsesSharedHourFormatting() {
+        let result = FocusSessionResult(
+            task: TaskItem(
+                title: "Review amino acids",
+                durationMinutes: 90,
+                energyRequired: .good,
+                area: "Education",
+                goal: "Study for MCAT"
+            ),
+            plannedDurationSeconds: 90 * 60,
+            focusedDurationSeconds: 85 * 60,
+            endedNaturally: false
+        )
+        #expect(result.focusedDurationLabel == "1H 25M FOCUSED")
     }
 }
 

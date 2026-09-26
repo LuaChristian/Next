@@ -10,43 +10,35 @@ import SwiftUI
 
 struct PlantGoalView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var titleFocused: Bool
 
     @State private var title = ""
     @State private var selectedArea: GoalArea?
     @State private var selectedPriority: GoalPriority = .normal
 
-    private var trimmedTitle: String {
-        title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var canPlant: Bool {
-        !trimmedTitle.isEmpty && selectedArea != nil
-    }
-
-    private var canvasColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.11, green: 0.12, blue: 0.11)
-            : Color(red: 0.98, green: 0.97, blue: 0.94)
+        NextInput.trimmedTitle(title) != nil && selectedArea != nil
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PLANT A GOAL")
-                    .font(.system(size: 13, weight: .medium))
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
                     .tracking(2.2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NextTheme.secondary)
 
                 Text("What do you want to work toward?")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(.primary)
+                    .nextFont(22, relativeTo: .title3)
+                    .foregroundStyle(NextTheme.ink)
                     .padding(.top, 36)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 TextField("Study for MCAT", text: $title)
-                    .font(.system(size: 22, weight: .regular))
+                    .nextFont(22, relativeTo: .title3)
+                    .foregroundStyle(NextTheme.ink)
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.done)
                     .focused($titleFocused)
@@ -54,88 +46,89 @@ struct PlantGoalView: View {
                     .accessibilityLabel("Goal title")
 
                 Text("AREA")
-                    .font(.system(size: 13, weight: .medium))
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
                     .tracking(1.8)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NextTheme.secondary)
                     .padding(.top, 40)
 
                 areaGrid
                     .padding(.top, 8)
 
                 Text("PRIORITY")
-                    .font(.system(size: 13, weight: .medium))
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
                     .tracking(1.8)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NextTheme.secondary)
                     .padding(.top, 32)
 
-                HStack(spacing: 8) {
+                choiceStack {
                     ForEach(GoalPriority.allCases) { priority in
                         SelectionOption(
                             title: priority.title,
                             isSelected: selectedPriority == priority
                         ) {
+                            titleFocused = false
                             selectedPriority = priority
                         }
                     }
                 }
                 .padding(.top, 8)
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, NextTheme.pagePadding)
             .padding(.top, 12)
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(canvasColor.ignoresSafeArea())
+        .background(NextTheme.canvas.ignoresSafeArea())
+        .nextKeyboardDone($titleFocused)
         .safeAreaInset(edge: .bottom) {
             plantAction
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .onTapGesture {
-            titleFocused = false
-        }
     }
 
     private var areaGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+        LazyVGrid(columns: areaColumns, spacing: 4) {
             ForEach(GoalArea.allCases) { area in
                 SelectionOption(
                     title: area.title,
                     isSelected: selectedArea == area
                 ) {
+                    titleFocused = false
                     selectedArea = area
                 }
             }
         }
     }
 
-    private var plantAction: some View {
-        VStack(spacing: 18) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+    private var areaColumns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+    }
 
-            Button("PLANT GOAL →") {
-                guard let area = selectedArea else { return }
-                modelContext.insert(
-                    Goal(title: trimmedTitle, area: area, priority: selectedPriority)
-                )
-                try? modelContext.save()
-                dismiss()
-            }
-            .font(.system(size: 13, weight: .semibold))
-            .tracking(2.2)
-            .foregroundStyle(canPlant ? Color.accentColor : Color.secondary.opacity(0.45))
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .disabled(!canPlant)
-
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+    @ViewBuilder
+    private func choiceStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 4) { content() }
+        } else {
+            HStack(spacing: 8) { content() }
         }
-        .padding(.horizontal, 28)
+    }
+
+    private var plantAction: some View {
+        NextPrimaryAction(title: "PLANT GOAL →", isEnabled: canPlant) {
+            titleFocused = false
+            guard let area = selectedArea, let trimmed = NextInput.trimmedTitle(title) else { return }
+            modelContext.insert(
+                Goal(title: trimmed, area: area, priority: selectedPriority)
+            )
+            try? modelContext.save()
+            dismiss()
+        }
+        .padding(.horizontal, NextTheme.pagePadding)
         .padding(.bottom, 12)
-        .background(canvasColor)
+        .background(NextTheme.canvas)
     }
 }

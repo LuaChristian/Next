@@ -33,25 +33,29 @@ enum GardenMetrics {
         count == 1 ? "1 SESSION" : "\(count) SESSIONS"
     }
 
-    static func focusedDurationLabel(seconds: TimeInterval) -> String {
+    static func durationText(seconds: TimeInterval) -> String {
         if seconds <= 0 {
-            return "0 MIN FOCUSED"
+            return "0 MIN"
         }
         if seconds < 60 {
-            return "<1 MIN FOCUSED"
+            return "<1 MIN"
         }
 
         let minutes = Int(seconds / 60)
         if minutes < 60 {
-            return minutes == 1 ? "1 MIN FOCUSED" : "\(minutes) MIN FOCUSED"
+            return minutes == 1 ? "1 MIN" : "\(minutes) MIN"
         }
 
         let hours = minutes / 60
         let remainder = minutes % 60
         if remainder == 0 {
-            return "\(hours)H FOCUSED"
+            return "\(hours)H"
         }
-        return "\(hours)H \(remainder)M FOCUSED"
+        return "\(hours)H \(remainder)M"
+    }
+
+    static func focusedDurationLabel(seconds: TimeInterval) -> String {
+        "\(durationText(seconds: seconds)) FOCUSED"
     }
 
     static func sessionCountSpoken(_ count: Int) -> String {

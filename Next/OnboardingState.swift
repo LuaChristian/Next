@@ -116,8 +116,7 @@ struct OnboardingState: Equatable {
     }
 
     mutating func addCustomGoal(title: String, area: GoalArea) {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, selectedAreas.contains(area) else { return }
+        guard let trimmed = NextInput.trimmedTitle(title), selectedAreas.contains(area) else { return }
         customGoals.append(OnboardingPendingGoal(title: trimmed, area: area))
     }
 

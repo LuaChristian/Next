@@ -14,15 +14,7 @@ struct FocusSessionResult: Equatable {
     let endedNaturally: Bool
 
     var focusedDurationLabel: String {
-        guard focusedDurationSeconds >= 60 else {
-            return "<1 MIN FOCUSED"
-        }
-
-        let minutes = Int(focusedDurationSeconds / 60)
-        if minutes == 1 {
-            return "1 MIN FOCUSED"
-        }
-        return "\(minutes) MIN FOCUSED"
+        GardenMetrics.focusedDurationLabel(seconds: focusedDurationSeconds)
     }
 }
 

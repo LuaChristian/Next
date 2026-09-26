@@ -24,8 +24,17 @@ struct ContentView: View {
             .tabItem {
                 Label("Garden", systemImage: "leaf")
             }
+
+            NavigationStack {
+                HistoryView()
+            }
+            .tabItem {
+                Label("History", systemImage: "clock")
+            }
         }
-        .tint(Color.accentColor)
+        .tint(NextTheme.botanical)
+        .toolbarBackground(NextTheme.canvas, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
     }
 }
 

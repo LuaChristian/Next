@@ -12,10 +12,10 @@ struct BotanicalPlantView: View {
 
     var body: some View {
         Canvas { context, size in
-            let ink = Color.accentColor
-            let stem = ink.opacity(0.88)
-            let leaf = ink.opacity(0.72)
-            let seed = ink.opacity(0.38)
+            let ink = NextTheme.botanical
+            let stem = ink.opacity(0.90)
+            let leaf = ink.opacity(0.78)
+            let seed = ink.opacity(0.58)
 
             let origin = CGPoint(x: size.width * 0.48, y: size.height * 0.92)
             let scale = min(size.width, size.height)
@@ -24,12 +24,12 @@ struct BotanicalPlantView: View {
 
             switch stage {
             case .seedling:
-                drawStem(in: &context, from: origin, to: point(0.02, -0.22, origin, scale), color: stem, width: 1.2)
-                drawLeaf(in: &context, at: point(0.03, -0.18, origin, scale), size: scale * 0.07, angle: 0.55, color: leaf)
+                drawStem(in: &context, from: origin, to: point(0.02, -0.28, origin, scale), color: stem, width: 1.35)
+                drawLeaf(in: &context, at: point(0.04, -0.22, origin, scale), size: scale * 0.09, angle: 0.55, color: leaf)
             case .sprout:
-                drawStem(in: &context, from: origin, to: point(0.01, -0.42, origin, scale), color: stem, width: 1.3)
-                drawLeaf(in: &context, at: point(-0.08, -0.26, origin, scale), size: scale * 0.11, angle: -0.85, color: leaf)
-                drawLeaf(in: &context, at: point(0.11, -0.30, origin, scale), size: scale * 0.10, angle: 0.75, color: leaf)
+                drawStem(in: &context, from: origin, to: point(0.01, -0.46, origin, scale), color: stem, width: 1.4)
+                drawLeaf(in: &context, at: point(-0.09, -0.28, origin, scale), size: scale * 0.12, angle: -0.85, color: leaf)
+                drawLeaf(in: &context, at: point(0.12, -0.32, origin, scale), size: scale * 0.11, angle: 0.75, color: leaf)
             case .young:
                 drawStem(in: &context, from: origin, to: point(-0.01, -0.58, origin, scale), color: stem, width: 1.4)
                 drawLeaf(in: &context, at: point(-0.12, -0.28, origin, scale), size: scale * 0.12, angle: -0.9, color: leaf)
@@ -116,7 +116,7 @@ struct BotanicalPlantView: View {
         context.stroke(
             path.applying(transform),
             with: .color(color),
-            style: StrokeStyle(lineWidth: 1.15, lineCap: .round, lineJoin: .round)
+            style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round)
         )
     }
 }

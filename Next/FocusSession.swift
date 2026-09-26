@@ -16,6 +16,8 @@ final class FocusSession {
     var focusedDurationSeconds: Double
     var endedNaturally: Bool
     var taskWasFinished: Bool
+    var taskTitleSnapshot: String?
+    var goalTitleSnapshot: String?
     var goal: Goal?
     var task: GoalTask?
 
@@ -26,6 +28,8 @@ final class FocusSession {
         focusedDurationSeconds: Double,
         endedNaturally: Bool,
         taskWasFinished: Bool,
+        taskTitleSnapshot: String? = nil,
+        goalTitleSnapshot: String? = nil,
         goal: Goal? = nil,
         task: GoalTask? = nil
     ) {
@@ -35,8 +39,31 @@ final class FocusSession {
         self.focusedDurationSeconds = focusedDurationSeconds
         self.endedNaturally = endedNaturally
         self.taskWasFinished = taskWasFinished
+        self.taskTitleSnapshot = taskTitleSnapshot
+        self.goalTitleSnapshot = goalTitleSnapshot
         self.goal = goal
         self.task = task
+    }
+
+    var historyTaskTitle: String {
+        if let taskTitleSnapshot, !taskTitleSnapshot.isEmpty { return taskTitleSnapshot }
+        return task?.title ?? "Untitled"
+    }
+
+    var historyGoalTitle: String {
+        if let goalTitleSnapshot, !goalTitleSnapshot.isEmpty { return goalTitleSnapshot }
+        return goal?.title ?? ""
+    }
+
+    var historyRecord: HistorySessionRecord {
+        HistorySessionRecord(
+            id: id,
+            completedAt: completedAt,
+            focusedDurationSeconds: focusedDurationSeconds,
+            taskWasFinished: taskWasFinished,
+            taskTitle: historyTaskTitle,
+            goalTitle: historyGoalTitle
+        )
     }
 }
 
@@ -70,6 +97,8 @@ enum FocusSessionStore {
             focusedDurationSeconds: result.focusedDurationSeconds,
             endedNaturally: result.endedNaturally,
             taskWasFinished: taskWasFinished,
+            taskTitleSnapshot: result.task.title,
+            goalTitleSnapshot: result.task.goal,
             goal: goal,
             task: tasks.first
         )

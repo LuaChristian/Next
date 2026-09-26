@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct RecommendationView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
     let recommendations: [TaskItem]
@@ -41,15 +40,12 @@ struct RecommendationView: View {
         currentIndex + 1 < recommendations.count
     }
 
-    private var canvasColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.11, green: 0.12, blue: 0.11)
-            : Color(red: 0.98, green: 0.97, blue: 0.94)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            brand
+            Text("NEXT")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(3.2)
+                .foregroundStyle(NextTheme.secondary)
 
             Spacer(minLength: 40)
 
@@ -65,11 +61,7 @@ struct RecommendationView: View {
                 actions
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(canvasColor.ignoresSafeArea())
+        .nextScrollableCanvas()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .fullScreenCover(item: $focusTask) { task in
@@ -80,78 +72,73 @@ struct RecommendationView: View {
         }
     }
 
-    private var brand: some View {
-        Text("NEXT")
-            .font(.system(size: 13, weight: .medium))
-            .tracking(3.2)
-            .foregroundStyle(.secondary)
-    }
-
     private func recommendationContent(for task: TaskItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("YOUR NEXT MOVE")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(2.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
 
             Text(task.title)
-                .font(.system(size: 34, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(34, relativeTo: .largeTitle)
+                .foregroundStyle(NextTheme.ink)
                 .padding(.top, 22)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("\(task.durationMinutes) MINUTES")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.8)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(NextTheme.botanical)
                 .padding(.top, 16)
 
             Text(task.area.uppercased())
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.8)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 36)
 
             Text(task.goal)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(17)
+                .foregroundStyle(NextTheme.ink)
                 .padding(.top, 8)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+            NextHairline()
                 .padding(.top, 36)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Fits the time you have.")
                 Text("Matches your energy.")
             }
-            .font(.system(size: 17, weight: .regular))
-            .foregroundStyle(.secondary)
+            .nextFont(17)
+            .foregroundStyle(NextTheme.secondary)
             .padding(.top, 20)
 
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+            NextHairline()
                 .padding(.top, 20)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(task.title). \(task.durationMinutes) minutes. \(task.goal). Fits the time you have. Matches your energy."
+        )
     }
 
     private var emptyContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(hasAnyTasks ? "NOTHING FITS RIGHT NOW" : "NO TASKS YET")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(2.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
 
             Text(
                 hasAnyTasks
                     ? "None of your tasks fit this time and energy combination."
                     : "Plant a goal and add a task before asking what's next."
             )
-            .font(.system(size: 28, weight: .regular))
-            .foregroundStyle(.primary)
+            .nextFont(28, relativeTo: .title)
+            .foregroundStyle(NextTheme.ink)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -162,17 +149,17 @@ struct RecommendationView: View {
             Button("START SESSION →") {
                 focusTask = currentTask
             }
-            .font(.system(size: 13, weight: .semibold))
+            .nextFont(13, weight: .semibold)
             .tracking(2.2)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(NextTheme.botanical)
             .frame(maxWidth: .infinity, minHeight: 44)
 
             Button("Not this one") {
                 guard hasAnotherRecommendation else { return }
                 currentIndex += 1
             }
-            .font(.system(size: 16, weight: .regular))
-            .foregroundStyle(hasAnotherRecommendation ? Color.primary : Color.secondary.opacity(0.45))
+            .nextFont(16)
+            .foregroundStyle(hasAnotherRecommendation ? NextTheme.ink : NextTheme.disabled)
             .frame(maxWidth: .infinity, minHeight: 44)
             .disabled(!hasAnotherRecommendation)
         }

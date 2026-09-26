@@ -56,71 +56,68 @@ struct OnboardingFlow: View {
 }
 
 private struct OnboardingWelcomeView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let onGetStarted: () -> Void
     let onSkip: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("NEXT")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(3.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
                 .accessibilityAddTraits(.isHeader)
 
             Text("Make your free time count.")
-                .font(.system(size: 34, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(34, relativeTo: .largeTitle)
+                .foregroundStyle(NextTheme.ink)
                 .padding(.top, 28)
                 .accessibilityAddTraits(.isHeader)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("Spend your time on what matters.\nWe'll help you decide what comes next.")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
+                .nextFont(17)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 20)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 48)
 
-            OnboardingPrimaryAction(title: "GET STARTED →", isEnabled: true, action: onGetStarted)
+            NextPrimaryAction(title: "GET STARTED →", action: onGetStarted)
 
             Button("Skip for now", action: onSkip)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.secondary)
+                .nextFont(16)
+                .foregroundStyle(NextTheme.secondary)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.top, 8)
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(OnboardingCanvas.color(for: colorScheme).ignoresSafeArea())
+        .nextScrollableCanvas()
         .toolbar(.hidden, for: .navigationBar)
     }
 }
 
 private struct OnboardingAreasView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Binding var state: OnboardingState
     let onContinue: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             OnboardingProgressLabel(step: 1)
 
             Text("WHAT MATTERS TO YOU?")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(2.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 28)
 
             Text("Choose the parts of your life\nyou want to make progress in.")
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(28, relativeTo: .title)
+                .foregroundStyle(NextTheme.ink)
                 .padding(.top, 16)
                 .accessibilityAddTraits(.isHeader)
+                .fixedSize(horizontal: false, vertical: true)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+            LazyVGrid(columns: areaColumns, spacing: 4) {
                 ForEach(GoalArea.allCases) { area in
                     SelectionOption(
                         title: area.title,
@@ -129,32 +126,32 @@ private struct OnboardingAreasView: View {
                         state.toggleArea(area)
                     }
                     .accessibilityLabel(area.title)
-                    .accessibilityValue(state.selectedAreas.contains(area) ? "Selected" : "Not selected")
                 }
             }
             .padding(.top, 28)
 
             Spacer(minLength: 48)
 
-            OnboardingPrimaryAction(
+            NextPrimaryAction(
                 title: "NEXT →",
                 isEnabled: state.canContinueFromAreas,
                 action: onContinue
             )
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(OnboardingCanvas.color(for: colorScheme).ignoresSafeArea())
+        .nextScrollableCanvas()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
     }
+
+    private var areaColumns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+    }
 }
 
 private struct OnboardingGoalsView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Binding var state: OnboardingState
     let onContinue: () -> Void
 
@@ -167,15 +164,17 @@ private struct OnboardingGoalsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("WHAT ARE YOU\nWORKING TOWARD?")
-                        .font(.system(size: 28, weight: .regular))
-                        .foregroundStyle(.primary)
+                        .nextFont(28, relativeTo: .title)
+                        .foregroundStyle(NextTheme.ink)
                         .padding(.top, 28)
                         .accessibilityAddTraits(.isHeader)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text("Choose anything you'd like\nto make progress on.")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(.secondary)
+                        .nextFont(17)
+                        .foregroundStyle(NextTheme.secondary)
                         .padding(.top, 16)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     ForEach(orderedSelectedAreas, id: \.self) { area in
                         areaSection(area)
@@ -188,23 +187,19 @@ private struct OnboardingGoalsView: View {
             Button("+ ADD MY OWN GOAL") {
                 isAddingCustomGoal = true
             }
-            .font(.system(size: 13, weight: .semibold))
+            .nextFont(13, weight: .semibold)
             .tracking(2.2)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(NextTheme.botanical)
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.top, 8)
 
-            OnboardingPrimaryAction(
+            NextPrimaryAction(
                 title: "CONTINUE →",
                 isEnabled: state.canContinueFromGoals,
                 action: onContinue
             )
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(OnboardingCanvas.color(for: colorScheme).ignoresSafeArea())
+        .nextCanvas()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -222,9 +217,9 @@ private struct OnboardingGoalsView: View {
     private func areaSection(_ area: GoalArea) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(area.title.uppercased())
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.8)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 36)
                 .padding(.bottom, 4)
 
@@ -247,8 +242,8 @@ private struct OnboardingGoalsView: View {
 }
 
 private struct OnboardingCustomGoalView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var titleFocused: Bool
 
     let availableAreas: [GoalArea]
@@ -257,12 +252,8 @@ private struct OnboardingCustomGoalView: View {
     @State private var title = ""
     @State private var selectedArea: GoalArea?
 
-    private var trimmedTitle: String {
-        title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var canAdd: Bool {
-        !trimmedTitle.isEmpty && selectedArea != nil
+        NextInput.trimmedTitle(title) != nil && selectedArea != nil
     }
 
     var body: some View {
@@ -270,18 +261,20 @@ private struct OnboardingCustomGoalView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("ADD A GOAL")
-                        .font(.system(size: 13, weight: .medium))
+                        .nextFont(13, weight: .medium, relativeTo: .caption)
                         .tracking(2.2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NextTheme.secondary)
 
                     Text("What are you working toward?")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(.primary)
+                        .nextFont(22, relativeTo: .title3)
+                        .foregroundStyle(NextTheme.ink)
                         .padding(.top, 36)
                         .accessibilityAddTraits(.isHeader)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     TextField("Learn iOS development", text: $title)
-                        .font(.system(size: 22, weight: .regular))
+                        .nextFont(22, relativeTo: .title3)
+                        .foregroundStyle(NextTheme.ink)
                         .textInputAutocapitalization(.sentences)
                         .submitLabel(.done)
                         .focused($titleFocused)
@@ -289,12 +282,12 @@ private struct OnboardingCustomGoalView: View {
                         .accessibilityLabel("Goal title")
 
                     Text("AREA")
-                        .font(.system(size: 13, weight: .medium))
+                        .nextFont(13, weight: .medium, relativeTo: .caption)
                         .tracking(1.8)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NextTheme.secondary)
                         .padding(.top, 40)
 
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+                    LazyVGrid(columns: areaColumns, spacing: 4) {
                         ForEach(availableAreas) { area in
                             SelectionOption(
                                 title: area.title,
@@ -306,26 +299,27 @@ private struct OnboardingCustomGoalView: View {
                     }
                     .padding(.top, 8)
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, NextTheme.pagePadding)
                 .padding(.top, 12)
                 .padding(.bottom, 24)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background(OnboardingCanvas.color(for: colorScheme).ignoresSafeArea())
+            .background(NextTheme.canvas.ignoresSafeArea())
+            .nextKeyboardDone($titleFocused)
             .safeAreaInset(edge: .bottom) {
-                OnboardingPrimaryAction(title: "ADD GOAL →", isEnabled: canAdd) {
-                    guard let selectedArea else { return }
-                    onAdd(trimmedTitle, selectedArea)
+                NextPrimaryAction(title: "ADD GOAL →", isEnabled: canAdd) {
+                    guard let selectedArea, let trimmed = NextInput.trimmedTitle(title) else { return }
+                    onAdd(trimmed, selectedArea)
                     dismiss()
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, NextTheme.pagePadding)
                 .padding(.bottom, 12)
-                .background(OnboardingCanvas.color(for: colorScheme))
+                .background(NextTheme.canvas)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NextTheme.secondary)
                 }
             }
             .onAppear {
@@ -334,10 +328,15 @@ private struct OnboardingCustomGoalView: View {
         }
         .presentationDragIndicator(.visible)
     }
+
+    private var areaColumns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+    }
 }
 
 private struct OnboardingReadyView: View {
-    @Environment(\.colorScheme) private var colorScheme
     let onStart: () -> Void
 
     var body: some View {
@@ -345,31 +344,29 @@ private struct OnboardingReadyView: View {
             OnboardingProgressLabel(step: 3)
 
             Text("NEXT")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(3.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 28)
 
             Text("YOU'RE READY.")
-                .font(.system(size: 34, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(34, relativeTo: .largeTitle)
+                .foregroundStyle(NextTheme.ink)
                 .padding(.top, 28)
                 .accessibilityAddTraits(.isHeader)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("Your Garden has somewhere\nto start.")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
+                .nextFont(17)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 20)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 48)
 
-            OnboardingPrimaryAction(title: "START USING NEXT →", isEnabled: true, action: onStart)
+            NextPrimaryAction(title: "START USING NEXT →", action: onStart)
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(OnboardingCanvas.color(for: colorScheme).ignoresSafeArea())
+        .nextScrollableCanvas()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -381,9 +378,9 @@ private struct OnboardingProgressLabel: View {
 
     var body: some View {
         Text("\(step) / 3")
-            .font(.system(size: 13, weight: .medium))
+            .nextFont(13, weight: .medium, relativeTo: .caption)
             .tracking(2.2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(NextTheme.secondary)
             .accessibilityLabel("Step \(step) of 3")
     }
 }
@@ -393,58 +390,30 @@ private struct OnboardingChoiceRow: View {
     let isSelected: Bool
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 20, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                    .nextFont(20, weight: isSelected ? .medium : .regular, relativeTo: .title3)
+                    .foregroundStyle(isSelected ? NextTheme.botanical : NextTheme.ink)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Rectangle()
-                    .fill(isSelected ? Color.accentColor : Color.clear)
+                    .fill(isSelected ? NextTheme.botanical : Color.clear)
                     .frame(width: 18, height: 2)
             }
             .padding(.vertical, 16)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isSelected)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-}
-
-private struct OnboardingPrimaryAction: View {
-    let title: String
-    let isEnabled: Bool
-    let action: () -> Void
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
-
-            Button(title, action: action)
-                .font(.system(size: 13, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary.opacity(0.45))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(!isEnabled)
-
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
-        }
-    }
-}
-
-private enum OnboardingCanvas {
-    static func color(for colorScheme: ColorScheme) -> Color {
-        colorScheme == .dark
-            ? Color(red: 0.11, green: 0.12, blue: 0.11)
-            : Color(red: 0.98, green: 0.97, blue: 0.94)
     }
 }
 

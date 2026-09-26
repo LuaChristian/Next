@@ -43,8 +43,8 @@ enum EnergyLevel: String, CaseIterable, Identifiable, Codable {
 }
 
 struct HomeView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
@@ -54,10 +54,8 @@ struct HomeView: View {
         selectedTime != nil && selectedEnergy != nil
     }
 
-    private var canvasColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.11, green: 0.12, blue: 0.11)
-            : Color(red: 0.98, green: 0.97, blue: 0.94)
+    private var stacksChoices: Bool {
+        dynamicTypeSize.isAccessibilitySize
     }
 
     var body: some View {
@@ -68,13 +66,12 @@ struct HomeView: View {
             Spacer(minLength: 40)
             energySection
             Spacer(minLength: 48)
-            primaryAction
+            NextPrimaryAction(title: "WHAT'S NEXT?", isEnabled: canProceed) {
+                guard let time = selectedTime, let energy = selectedEnergy else { return }
+                recommendationInput = RecommendationInput(time: time, energy: energy)
+            }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(canvasColor.ignoresSafeArea())
+        .nextScrollableCanvas()
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $recommendationInput) { input in
             RecommendationView(
@@ -88,13 +85,14 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 28) {
             Text("NEXT")
-                .font(.system(size: 13, weight: .medium))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(3.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NextTheme.secondary)
 
             Text("Good afternoon.")
-                .font(.system(size: 34, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(34, relativeTo: .largeTitle)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
     }
@@ -102,10 +100,11 @@ struct HomeView: View {
     private var timeSection: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("What do you have time for?")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(17)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            choiceStack {
                 ForEach(TimeOption.allCases) { option in
                     SelectionOption(
                         title: option.title,
@@ -113,6 +112,7 @@ struct HomeView: View {
                     ) {
                         selectedTime = option
                     }
+                    .accessibilityLabel(option.title)
                 }
             }
         }
@@ -122,10 +122,11 @@ struct HomeView: View {
     private var energySection: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("How are you feeling?")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.primary)
+                .nextFont(17)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            choiceStack {
                 ForEach(EnergyLevel.allCases) { option in
                     SelectionOption(
                         title: option.title,
@@ -133,31 +134,19 @@ struct HomeView: View {
                     ) {
                         selectedEnergy = option
                     }
+                    .accessibilityLabel(option.title)
                 }
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    private var primaryAction: some View {
-        VStack(spacing: 18) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
-
-            Button("WHAT'S NEXT?") {
-                guard let time = selectedTime, let energy = selectedEnergy else { return }
-                recommendationInput = RecommendationInput(time: time, energy: energy)
-            }
-            .font(.system(size: 13, weight: .semibold))
-            .tracking(2.2)
-            .foregroundStyle(canProceed ? Color.accentColor : Color.secondary.opacity(0.45))
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .disabled(!canProceed)
-
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 0.5)
+    @ViewBuilder
+    private func choiceStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if stacksChoices {
+            VStack(spacing: 4) { content() }
+        } else {
+            HStack(spacing: 8) { content() }
         }
     }
 }
