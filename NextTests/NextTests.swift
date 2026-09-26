@@ -1860,6 +1860,335 @@ struct TaskLifecycleTests {
     }
 }
 
+struct GoalTaskManagementTests {
+    private let engine = RecommendationEngine()
+
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try NextPersistence.makeInMemoryContainer())
+    }
+
+    @MainActor
+    private func plant(
+        in context: ModelContext,
+        title: String = "Study for MCAT",
+        area: GoalArea = .education,
+        priority: GoalPriority = .high,
+        taskTitle: String = "Review amino acids",
+        minutes: Int = 30,
+        energy: EnergyLevel = .good
+    ) throws -> (Goal, GoalTask) {
+        let goal = Goal(title: title, area: area, priority: priority)
+        context.insert(goal)
+        let task = GoalTask(title: taskTitle, durationMinutes: minutes, energyRequired: energy, goal: goal)
+        context.insert(task)
+        try context.save()
+        return (goal, task)
+    }
+
+    @MainActor
+    private func session(
+        for task: GoalTask,
+        in context: ModelContext,
+        finished: Bool = false,
+        at date: Date = Date(timeIntervalSince1970: 1_800_000_000),
+        planned: TimeInterval = 30 * 60,
+        focused: TimeInterval = 30 * 60,
+        taskSnapshot: String? = nil,
+        goalSnapshot: String? = nil
+    ) throws -> FocusSession {
+        let session = FocusSession(
+            completedAt: date,
+            plannedDurationSeconds: planned,
+            focusedDurationSeconds: focused,
+            endedNaturally: true,
+            taskWasFinished: finished,
+            taskTitleSnapshot: taskSnapshot ?? task.title,
+            goalTitleSnapshot: goalSnapshot ?? task.goal?.title ?? "",
+            goal: task.goal,
+            task: task
+        )
+        context.insert(session)
+        try context.save()
+        return session
+    }
+
+    @MainActor
+    private func recommend(from context: ModelContext, time: TimeOption = .thirty, energy: EnergyLevel = .good) throws -> [TaskItem] {
+        engine.recommendations(
+            tasks: try context.fetch(FetchDescriptor<GoalTask>()).recommendationItems,
+            availableTime: time,
+            energy: energy
+        )
+    }
+
+    @MainActor
+    @Test func editGoalTitlePreservesIdentityAndSnapshot() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        let goalID = goal.id
+        let persisted = try session(for: task, in: context, goalSnapshot: "Study for MCAT")
+
+        try PlanningStore.updateGoal(goal, title: "MCAT prep", area: .education, priority: .high, context: context)
+
+        #expect(goal.id == goalID)
+        #expect(goal.title == "MCAT prep")
+        #expect(persisted.goalTitleSnapshot == "Study for MCAT")
+        #expect(persisted.historyGoalTitle == "Study for MCAT")
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(goal.growthStage == .sprout)
+    }
+
+    @MainActor
+    @Test func editGoalAreaPreservesSessionsAndProgress() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        try session(for: task, in: context)
+
+        try PlanningStore.updateGoal(goal, title: goal.title, area: .career, priority: .high, context: context)
+
+        #expect(goal.area == .career)
+        #expect(goal.sessionCount == 1)
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+    }
+
+    @MainActor
+    @Test func editGoalPriorityChangesRecommendationRanking() throws {
+        let context = try makeContext()
+        let (mcat, amino) = try plant(in: context)
+        let (portfolio, page) = try plant(
+            in: context,
+            title: "Portfolio",
+            area: .career,
+            priority: .normal,
+            taskTitle: "Update page",
+            minutes: 30
+        )
+
+        var result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Review amino acids", "Update page"])
+
+        try PlanningStore.updateGoal(portfolio, title: portfolio.title, area: .career, priority: .high, context: context)
+        try PlanningStore.updateGoal(mcat, title: mcat.title, area: .education, priority: .normal, context: context)
+
+        result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Update page", "Review amino acids"])
+        #expect(amino.isCompleted == false)
+        #expect(page.isCompleted == false)
+    }
+
+    @MainActor
+    @Test func editTaskTitlePreservesIdentityAndSnapshot() throws {
+        let context = try makeContext()
+        let (_, task) = try plant(in: context)
+        let taskID = task.id
+        let persisted = try session(for: task, in: context, taskSnapshot: "Review amino acids")
+
+        try PlanningStore.updateTask(task, title: "Review organic chemistry", durationMinutes: 30, energyRequired: .good, context: context)
+
+        #expect(task.id == taskID)
+        #expect(task.title == "Review organic chemistry")
+        #expect(persisted.taskTitleSnapshot == "Review amino acids")
+        #expect(persisted.historyTaskTitle == "Review amino acids")
+        #expect(persisted.plannedDurationSeconds == 1_800)
+        #expect(task.goal?.totalFocusedDuration == 1_800)
+    }
+
+    @MainActor
+    @Test func editActiveTaskDurationAndEnergyChangeEligibility() throws {
+        let context = try makeContext()
+        let (_, task) = try plant(in: context, minutes: 60, energy: .ready)
+
+        #expect(try recommend(from: context, time: .thirty, energy: .good).isEmpty)
+
+        try PlanningStore.updateTask(task, title: task.title, durationMinutes: 30, energyRequired: .good, context: context)
+
+        #expect(try recommend(from: context, time: .thirty, energy: .good).map(\.title) == ["Review amino acids"])
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+    }
+
+    @MainActor
+    @Test func editingCompletedTaskKeepsCompletionState() throws {
+        let context = try makeContext()
+        let (_, task) = try plant(in: context)
+        let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        task.complete(at: completedAt)
+        try context.save()
+
+        try PlanningStore.updateTask(task, title: "Renamed completed", durationMinutes: 15, energyRequired: .low, context: context)
+
+        #expect(task.isCompleted)
+        #expect(task.completedAt == completedAt)
+        #expect(try recommend(from: context).isEmpty)
+    }
+
+    @MainActor
+    @Test func deleteTaskPreservesSessionsAndRecency() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        let lastFocused = Date(timeIntervalSince1970: 1_800_000_000)
+        let persisted = try session(for: task, in: context, at: lastFocused, taskSnapshot: "Review amino acids")
+        let sessionCount = goal.sessionCount
+        let focused = goal.totalFocusedDuration
+        let recency = goal.lastFocusedAt
+
+        try PlanningStore.deleteTask(task, context: context)
+
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(persisted.task == nil)
+        #expect(persisted.taskWasFinished == false)
+        #expect(persisted.taskTitleSnapshot == "Review amino acids")
+        #expect(persisted.historyTaskTitle == "Review amino acids")
+        #expect(goal.sessionCount == sessionCount)
+        #expect(goal.totalFocusedDuration == focused)
+        #expect(goal.lastFocusedAt == recency)
+        #expect(try recommend(from: context).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+    }
+
+    @MainActor
+    @Test func deleteGoalPreservesSessionsAndSnapshots() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        let persisted = try session(
+            for: task,
+            in: context,
+            taskSnapshot: "Review amino acids",
+            goalSnapshot: "Study for MCAT"
+        )
+
+        try PlanningStore.deleteGoal(goal, context: context)
+
+        #expect(try context.fetch(FetchDescriptor<Goal>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(persisted.goal == nil)
+        #expect(persisted.task == nil)
+        #expect(persisted.goalTitleSnapshot == "Study for MCAT")
+        #expect(persisted.taskTitleSnapshot == "Review amino acids")
+        #expect(persisted.historyGoalTitle == "Study for MCAT")
+        #expect(persisted.historyTaskTitle == "Review amino acids")
+        #expect(try recommend(from: context).isEmpty)
+        #expect(HistoryPresentation.weeklySummary(sessions: [persisted.historyRecord], referenceDate: persisted.completedAt).sessionCount == 1)
+    }
+
+    @MainActor
+    @Test func deleteGoalDisappearsFromCurrentGoals() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        try session(for: task, in: context)
+        try PlanningStore.deleteGoal(goal, context: context)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).isEmpty)
+    }
+
+    @MainActor
+    @Test func renameDoesNotChangeHistoricalHistoryTitles() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        let persisted = try session(for: task, in: context, taskSnapshot: "Study chemistry", goalSnapshot: "Study for MCAT")
+
+        try PlanningStore.updateTask(task, title: "Review organic chemistry", durationMinutes: 30, energyRequired: .good, context: context)
+        try PlanningStore.updateGoal(goal, title: "MCAT", area: .education, priority: .high, context: context)
+
+        #expect(persisted.historyRecord.taskTitle == "Study chemistry")
+        #expect(persisted.historyRecord.goalTitle == "Study for MCAT")
+    }
+
+    @MainActor
+    @Test func legacySessionWithoutSnapshotFallsBackSafely() throws {
+        let context = try makeContext()
+        let (_, task) = try plant(in: context)
+        let persisted = try session(for: task, in: context, taskSnapshot: nil, goalSnapshot: nil)
+        persisted.taskTitleSnapshot = nil
+        persisted.goalTitleSnapshot = nil
+        try context.save()
+
+        #expect(persisted.historyTaskTitle == "Review amino acids")
+        #expect(persisted.historyGoalTitle == "Study for MCAT")
+
+        try PlanningStore.deleteTask(task, context: context)
+        #expect(persisted.historyTaskTitle == "Untitled")
+        #expect(persisted.historyGoalTitle == "Study for MCAT")
+    }
+
+    @MainActor
+    @Test func completedTaskRemainsExcludedAfterEditing() throws {
+        let context = try makeContext()
+        let (_, task) = try plant(in: context)
+        task.complete(at: Date())
+        try context.save()
+        try PlanningStore.updateTask(task, title: "Still done", durationMinutes: 15, energyRequired: .low, context: context)
+        #expect(try recommend(from: context).isEmpty)
+        task.reopen()
+        try context.save()
+        #expect(try recommend(from: context).map(\.title) == ["Still done"])
+    }
+
+    @MainActor
+    @Test func managementDoesNotCreateFocusSessions() throws {
+        let context = try makeContext()
+        let (goal, task) = try plant(in: context)
+        try PlanningStore.updateGoal(goal, title: "MCAT", area: .career, priority: .normal, context: context)
+        try PlanningStore.updateTask(task, title: "Amino", durationMinutes: 15, energyRequired: .low, context: context)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+        try PlanningStore.deleteTask(task, context: context)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+    }
+
+    @MainActor
+    @Test func recommendationRankingRemainsDeterministicAfterEdits() throws {
+        let high = TaskItem(title: "A", durationMinutes: 20, energyRequired: .good, area: "Education", goal: "MCAT", goalPriority: .high)
+        let never = TaskItem(title: "B", durationMinutes: 30, energyRequired: .good, area: "Career", goal: "Portfolio")
+        let recent = TaskItem(title: "C", durationMinutes: 30, energyRequired: .good, area: "Fitness", goal: "Fitness", goalPriority: .high, lastFocusedAt: Date())
+        let first = engine.recommendations(tasks: [never, recent, high], availableTime: .thirty, energy: .good)
+        let second = engine.recommendations(tasks: [never, recent, high], availableTime: .thirty, energy: .good)
+        #expect(first.map(\.title) == ["A", "C", "B"])
+        #expect(first.map(\.id) == second.map(\.id))
+        #expect(first.dropFirst().map(\.title) == ["C", "B"])
+    }
+
+    @MainActor
+    @Test func deleteGoalAndTaskSurviveContainerRecreation() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-v2-m3-\(UUID().uuidString).store")
+        let sessionID: UUID
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            let (goal, task) = try plant(in: context)
+            let persisted = try session(
+                for: task,
+                in: context,
+                finished: true,
+                taskSnapshot: "Review amino acids",
+                goalSnapshot: "Study for MCAT"
+            )
+            sessionID = persisted.id
+            try PlanningStore.deleteTask(task, context: context)
+            let leftover = try context.fetch(FetchDescriptor<Goal>()).first
+            try PlanningStore.deleteGoal(leftover!, context: context)
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(try context.fetch(FetchDescriptor<Goal>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).isEmpty)
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.id == sessionID)
+        #expect(sessions.first?.goal == nil)
+        #expect(sessions.first?.task == nil)
+        #expect(sessions.first?.taskTitleSnapshot == "Review amino acids")
+        #expect(sessions.first?.goalTitleSnapshot == "Study for MCAT")
+        #expect(sessions.first?.historyTaskTitle == "Review amino acids")
+        #expect(sessions.first?.taskWasFinished == true)
+    }
+}
+
 struct NextInputTests {
     @Test func trimmedTitleRejectsBlankAndWhitespace() {
         #expect(NextInput.trimmedTitle("") == nil)

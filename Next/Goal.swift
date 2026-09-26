@@ -77,6 +77,10 @@ enum TaskDuration: CaseIterable, Identifiable {
         case .ninetyPlus: "90+ min"
         }
     }
+
+    static func matching(minutes: Int) -> TaskDuration? {
+        allCases.first { $0.minutes == minutes }
+    }
 }
 
 @Model
@@ -90,7 +94,8 @@ final class Goal {
     @Relationship(deleteRule: .cascade, inverse: \GoalTask.goal)
     var tasks: [GoalTask]
 
-    @Relationship(deleteRule: .cascade, inverse: \FocusSession.goal)
+    /// Nullify, not cascade: deleting a Goal must keep historical FocusSessions.
+    @Relationship(deleteRule: .nullify, inverse: \FocusSession.goal)
     var focusSessions: [FocusSession]
 
     init(

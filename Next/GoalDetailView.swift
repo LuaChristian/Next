@@ -12,10 +12,15 @@ struct GoalDetailView: View {
     @Query(sort: \Goal.createdAt) private var goals: [Goal]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     let goalID: UUID
 
     @State private var isAddingTask = false
+    @State private var isEditingGoal = false
+    @State private var editingTaskID: UUID?
+    @State private var confirmDeleteGoal = false
+    @State private var taskPendingDeletion: GoalTask?
 
     private var goal: Goal? {
         goals.first(where: { $0.id == goalID })
@@ -46,8 +51,66 @@ struct GoalDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if goal != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Edit Goal") {
+                            isEditingGoal = true
+                        }
+                        Button("Delete Goal", role: .destructive) {
+                            confirmDeleteGoal = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundStyle(NextTheme.ink)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Goal options")
+                    .accessibilityIdentifier("goalOptions")
+                }
+            }
+        }
         .navigationDestination(isPresented: $isAddingTask) {
             AddTaskView(goalID: goalID)
+        }
+        .navigationDestination(isPresented: $isEditingGoal) {
+            EditGoalView(goalID: goalID)
+        }
+        .navigationDestination(item: $editingTaskID) {
+            EditTaskView(taskID: $0)
+        }
+        .confirmationDialog(
+            "Delete Goal?",
+            isPresented: $confirmDeleteGoal,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Goal", role: .destructive) {
+                deleteCurrentGoal()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the Goal and its current tasks. Your focus history will be kept.")
+        }
+        .confirmationDialog(
+            "Delete Task?",
+            isPresented: Binding(
+                get: { taskPendingDeletion != nil },
+                set: { if !$0 { taskPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Task", role: .destructive) {
+                if let task = taskPendingDeletion {
+                    try? PlanningStore.deleteTask(task, context: modelContext)
+                }
+                taskPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                taskPendingDeletion = nil
+            }
+        } message: {
+            Text("This removes the task from this Goal. Your focus history will be kept.")
         }
     }
 
@@ -167,8 +230,9 @@ struct GoalDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 20)
-                .accessibilityElement(children: .contain)
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("goalTask-\(task.title)")
+                .taskManagement(task, onEdit: { editingTaskID = task.id }, onDelete: { taskPendingDeletion = task })
 
                 if task.id != tasks.last?.id {
                     NextHairline()
@@ -219,11 +283,34 @@ struct GoalDetailView: View {
                     .accessibilityIdentifier("reopen-\(task.title)")
                 }
                 .padding(.vertical, 20)
+                .taskManagement(task, onEdit: { editingTaskID = task.id }, onDelete: { taskPendingDeletion = task })
 
                 if task.id != tasks.last?.id {
                     NextHairline()
                 }
             }
         }
+    }
+
+    private func deleteCurrentGoal() {
+        guard let goal else { return }
+        try? PlanningStore.deleteGoal(goal, context: modelContext)
+        dismiss()
+    }
+}
+
+private extension View {
+    func taskManagement(
+        _ task: GoalTask,
+        onEdit: @escaping () -> Void,
+        onDelete: @escaping () -> Void
+    ) -> some View {
+        self
+            .contextMenu {
+                Button("Edit \(task.title)") { onEdit() }
+                Button("Delete \(task.title)", role: .destructive) { onDelete() }
+            }
+            .accessibilityAction(named: "Edit \(task.title)", onEdit)
+            .accessibilityAction(named: "Delete \(task.title)", onDelete)
     }
 }

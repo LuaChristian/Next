@@ -737,6 +737,184 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testEditGoalAndTaskChangeCurrentStateAndRecommendations() throws {
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+
+        tapGoalOptions(in: app)
+        XCTAssertTrue(app.buttons["Edit Goal"].waitForExistence(timeout: 2))
+        app.buttons["Edit Goal"].tap()
+        XCTAssertTrue(app.staticTexts["EDIT GOAL"].waitForExistence(timeout: 2))
+        let goalField = app.textFields["Goal title"]
+        XCTAssertTrue(goalField.waitForExistence(timeout: 2))
+        replaceText(in: goalField, with: "MCAT prep")
+        dismissKeyboard(in: app)
+        app.buttons["Career"].tap()
+        app.buttons["SAVE GOAL →"].tap()
+
+        XCTAssertTrue(app.staticTexts["MCAT prep"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["CAREER"].exists)
+        XCTAssertTrue(app.staticTexts["HIGH PRIORITY"].exists)
+
+        openTaskEditor("Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["EDIT TASK"].waitForExistence(timeout: 2))
+        let taskField = app.textFields["Task title"]
+        replaceText(in: taskField, with: "Review organic chemistry")
+        dismissKeyboard(in: app)
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["SAVE TASK →"].tap()
+        XCTAssertTrue(app.staticTexts["Review organic chemistry"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["30 MIN  ·  GOOD"].exists || app.staticTexts.matching(NSPredicate(format: "label CONTAINS '30 MIN'")).firstMatch.exists)
+
+        openHome(in: app)
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["Review organic chemistry"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["MCAT prep"].exists)
+
+        app.tabBars.buttons["Garden"].tap()
+        openGardenGoal("MCAT prep", in: app)
+        tapGoalOptions(in: app)
+        XCTAssertTrue(app.buttons["Edit Goal"].waitForExistence(timeout: 2))
+        app.buttons["Edit Goal"].tap()
+        XCTAssertTrue(app.staticTexts["EDIT GOAL"].waitForExistence(timeout: 2))
+        dismissKeyboard(in: app)
+        app.buttons["Low"].tap()
+        app.buttons["SAVE GOAL →"].tap()
+        XCTAssertTrue(app.staticTexts["LOW PRIORITY"].waitForExistence(timeout: 2))
+
+        openHome(in: app)
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Review organic chemistry"].exists)
+    }
+
+    @MainActor
+    func testEditCompletedTaskRemainsCompleted() throws {
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+        XCTAssertTrue(app.staticTexts["COMPLETED"].waitForExistence(timeout: 2))
+
+        openTaskEditor("Review flashcards", completed: true, in: app)
+        let taskField = app.textFields["Task title"]
+        XCTAssertTrue(taskField.waitForExistence(timeout: 2))
+        replaceText(in: taskField, with: "Anki cards")
+        dismissKeyboard(in: app)
+        app.buttons["SAVE TASK →"].tap()
+
+        XCTAssertTrue(app.staticTexts["COMPLETED"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["completedTask-Anki cards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Reopen Anki cards"].exists)
+
+        app.tabBars.buttons["Home"].tap()
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertFalse(app.staticTexts["Anki cards"].exists)
+        XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testDeleteTaskAndGoalKeepHistory() throws {
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+
+        openTaskMenu("Review amino acids", in: app)
+        tapMenuButton("Delete Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["Delete Task?"].waitForExistence(timeout: 2))
+        app.buttons["Delete Task"].tap()
+        XCTAssertFalse(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.tabBars.buttons["History"].tap()
+        assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
+
+        app.tabBars.buttons["Garden"].tap()
+        app.staticTexts["Study for MCAT"].tap()
+        tapGoalOptions(in: app)
+        app.buttons["Delete Goal"].tap()
+        XCTAssertTrue(app.staticTexts["Delete Goal?"].waitForExistence(timeout: 2))
+        app.buttons["Delete Goal"].tap()
+        XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Study for MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["Portfolio"].exists)
+
+        app.tabBars.buttons["History"].tap()
+        assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
+    }
+
+    @MainActor
+    func testGoalTaskManagementVisualReview() throws {
+        let review = ManagementCapture(self)
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+
+        tapGoalOptions(in: app)
+        XCTAssertTrue(app.buttons["Edit Goal"].waitForExistence(timeout: 2))
+        review.capture(app, "01 Goal Detail management menu")
+        if !app.buttons["Edit Goal"].exists {
+            tapGoalOptions(in: app)
+            XCTAssertTrue(app.buttons["Edit Goal"].waitForExistence(timeout: 2))
+        }
+        app.buttons["Edit Goal"].tap()
+        XCTAssertTrue(app.staticTexts["EDIT GOAL"].waitForExistence(timeout: 2))
+        review.capture(app, "02 Edit Goal")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openTaskEditor("Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["EDIT TASK"].waitForExistence(timeout: 2))
+        review.capture(app, "03 Edit active Task")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openTaskEditor("Review flashcards", completed: true, in: app)
+        XCTAssertTrue(app.staticTexts["EDIT TASK"].waitForExistence(timeout: 2))
+        review.capture(app, "04 Edit completed Task")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openTaskMenu("Review amino acids", in: app)
+        tapMenuButton("Delete Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["Delete Task?"].waitForExistence(timeout: 2))
+        review.capture(app, "05 Delete Task confirmation")
+        app.buttons["Cancel"].tap()
+
+        tapGoalOptions(in: app)
+        app.buttons["Delete Goal"].tap()
+        XCTAssertTrue(app.staticTexts["Delete Goal?"].waitForExistence(timeout: 2))
+        review.capture(app, "06 Delete Goal confirmation")
+        app.buttons["Cancel"].tap()
+
+        openTaskEditor("Review amino acids", in: app)
+        replaceText(in: app.textFields["Task title"], with: "Renamed amino")
+        dismissKeyboard(in: app)
+        app.buttons["SAVE TASK →"].tap()
+        openTaskMenu("Renamed amino", in: app)
+        tapMenuButton("Delete Renamed amino", in: app)
+        app.buttons["Delete Task"].tap()
+        app.tabBars.buttons["History"].tap()
+        assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
+        review.capture(app, "07 History after Task rename and delete")
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+        tapGoalOptions(in: app)
+        app.buttons["Edit Goal"].tap()
+        replaceText(in: app.textFields["Goal title"], with: "MCAT renamed")
+        dismissKeyboard(in: app)
+        app.buttons["SAVE GOAL →"].tap()
+        XCTAssertTrue(app.staticTexts["MCAT renamed"].waitForExistence(timeout: 2))
+        tapGoalOptions(in: app)
+        app.buttons["Delete Goal"].tap()
+        XCTAssertTrue(app.staticTexts["Delete Goal?"].waitForExistence(timeout: 2))
+        app.buttons["Delete Goal"].tap()
+        XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 3))
+        app.tabBars.buttons["History"].tap()
+        assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
+        review.capture(app, "08 History after Goal rename and delete")
+    }
+
+    @MainActor
     func testWhitespaceGoalTitleCannotBePlanted() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
@@ -1048,7 +1226,120 @@ final class NextUITests: XCTestCase {
         let value = timer.value as? String ?? ""
         return value.hasPrefix("\(minutes) minutes") || value.hasPrefix("\(minutes - 1) minutes")
     }
+
+    private func launchManagementApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_MANAGEMENT"]
+        app.launch()
+        return app
+    }
+
+    private func openHome(in app: XCUIApplication) {
+        app.tabBars.buttons["Home"].tap()
+        if app.buttons["START SESSION →"].waitForExistence(timeout: 1) {
+            app.buttons["Back"].firstMatch.tap()
+        }
+        XCTAssertTrue(app.buttons["WHAT'S NEXT?"].waitForExistence(timeout: 3))
+    }
+
+    private func assertHistoryRow(task: String, goal: String, in app: XCUIApplication) {
+        let row = app.descendants(matching: .any)["historySession-\(task)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 3), "Missing history row for \(task)")
+        let label = row.label
+        XCTAssertTrue(
+            label.localizedCaseInsensitiveContains(goal)
+                || app.staticTexts[goal.uppercased()].exists
+                || app.staticTexts[task].exists,
+            "History row missing \(task) / \(goal); label=\(label)"
+        )
+    }
+
+    private func tapGoalOptions(in app: XCUIApplication) {
+        let button = app.buttons["goalOptions"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 2))
+        button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    private func openGardenGoal(_ title: String, in app: XCUIApplication) {
+        if !app.buttons["+ ADD TASK"].exists {
+            app.tabBars.buttons["Garden"].tap()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 2))
+            app.staticTexts[title].tap()
+        }
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+    }
+
+    private func openTaskMenu(_ title: String, completed: Bool = false, in app: XCUIApplication) {
+        let identifier = completed ? "completedTask-\(title)" : "goalTask-\(title)"
+        let row = app.descendants(matching: .any)[identifier]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        let editTitle = "Edit \(title)"
+        if app.buttons[editTitle].exists || app.menuItems[editTitle].exists {
+            return
+        }
+        row.press(forDuration: 1.2)
+        XCTAssertTrue(
+            app.buttons[editTitle].waitForExistence(timeout: 3)
+                || app.menuItems[editTitle].waitForExistence(timeout: 3)
+        )
+    }
+
+    private func openTaskEditor(_ title: String, completed: Bool = false, in app: XCUIApplication) {
+        openTaskMenu(title, completed: completed, in: app)
+        tapMenuButton("Edit \(title)", in: app)
+    }
+
+    private func tapMenuButton(_ title: String, in app: XCUIApplication) {
+        let button = app.buttons[title]
+        if button.waitForExistence(timeout: 2) {
+            button.tap()
+        } else {
+            XCTAssertTrue(app.menuItems[title].waitForExistence(timeout: 2))
+            app.menuItems[title].tap()
+        }
+    }
+
+    private func replaceText(in field: XCUIElement, with text: String) {
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
+        field.tap()
+        if let value = field.value as? String, !value.isEmpty {
+            let delete = String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count)
+            field.typeText(delete)
+        }
+        field.typeText(text)
+    }
+
+    private func dismissKeyboard(in app: XCUIApplication) {
+        let toolbarDone = app.toolbars.buttons["Done"]
+        if toolbarDone.exists {
+            toolbarDone.tap()
+        }
+    }
 }
+
+    private struct ManagementCapture {
+        static let directory = URL(fileURLWithPath:
+            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M3-Goal-Task-Management"
+        )
+
+        let test: XCTestCase
+
+        init(_ test: XCTestCase) {
+            self.test = test
+        }
+
+        func capture(_ app: XCUIApplication, _ name: String) {
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            test.add(attachment)
+
+            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+            let file = Self.directory.appendingPathComponent("\(name).png")
+            try? screenshot.pngRepresentation.write(to: file)
+        }
+    }
 
 private struct RecommendationEngineCapture {
     static let directory = URL(fileURLWithPath:

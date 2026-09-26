@@ -9,15 +9,16 @@ import Foundation
 import SwiftData
 
 enum NextPersistence {
-    /// Same model types as V1. V2-M1 adds `GoalTask.isCompleted` (default false)
-    /// and `GoalTask.completedAt` (optional). SwiftData applies a lightweight
-    /// migration; existing rows remain and default to active.
+    /// Same model types as V1/V2-M1. V2-M3 changes Goal→FocusSession from
+    /// cascade to nullify so deleting a Goal keeps historical sessions.
+    /// No stored properties were added or removed.
     static let schema = Schema([Goal.self, GoalTask.self, FocusSession.self])
     static let seedArgument = "UITEST_SEED_GARDEN"
     static let lifecycleSeedArgument = "UITEST_SEED_TASK_LIFECYCLE"
     static let growthSeedArgument = "UITEST_SEED_GROWTH"
     static let historySeedArgument = "UITEST_SEED_HISTORY"
     static let recommendationSeedArgument = "UITEST_SEED_RECOMMENDATION_ENGINE"
+    static let managementSeedArgument = "UITEST_SEED_MANAGEMENT"
     static let inMemoryArgument = "UITEST_IN_MEMORY"
     static let storeURLArgument = "UITEST_STORE_URL"
 
@@ -38,6 +39,9 @@ enum NextPersistence {
             if arguments.contains(recommendationSeedArgument) {
                 seedRecommendationEngine(ModelContext(container))
             }
+            if arguments.contains(managementSeedArgument) {
+                seedManagement(ModelContext(container))
+            }
             return container
         }
 
@@ -46,6 +50,7 @@ enum NextPersistence {
             || arguments.contains(historySeedArgument)
             || arguments.contains(lifecycleSeedArgument)
             || arguments.contains(recommendationSeedArgument)
+            || arguments.contains(managementSeedArgument)
             || arguments.contains(inMemoryArgument) {
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -64,6 +69,9 @@ enum NextPersistence {
             }
             if arguments.contains(recommendationSeedArgument) {
                 seedRecommendationEngine(context)
+            }
+            if arguments.contains(managementSeedArgument) {
+                seedManagement(context)
             }
             return container
         }
@@ -275,6 +283,42 @@ enum NextPersistence {
                 task: movement
             )
         )
+
+        try? context.save()
+    }
+
+    static func seedManagement(_ context: ModelContext, now: Date = Date()) {
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(mcat)
+        let amino = GoalTask(title: "Review amino acids", durationMinutes: 60, energyRequired: .ready, goal: mcat)
+        context.insert(amino)
+        context.insert(
+            GoalTask(
+                title: "Review flashcards",
+                durationMinutes: 15,
+                energyRequired: .low,
+                isCompleted: true,
+                completedAt: now,
+                goal: mcat
+            )
+        )
+        context.insert(
+            FocusSession(
+                completedAt: now.addingTimeInterval(-2 * 24 * 60 * 60),
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                taskTitleSnapshot: "Review amino acids",
+                goalTitleSnapshot: "Study for MCAT",
+                goal: mcat,
+                task: amino
+            )
+        )
+
+        let portfolio = Goal(title: "Portfolio", area: .career, priority: .normal)
+        context.insert(portfolio)
+        context.insert(GoalTask(title: "Update project description", durationMinutes: 30, energyRequired: .good, goal: portfolio))
 
         try? context.save()
     }
