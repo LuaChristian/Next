@@ -10,7 +10,7 @@ import SwiftUI
 struct RecommendationView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let recommendations: [TaskItem]
+    let recommendations: [RankedRecommendation]
     let hasAnyTasks: Bool
 
     @State private var currentIndex = 0
@@ -22,7 +22,7 @@ struct RecommendationView: View {
         tasks: [TaskItem],
         hasAnyTasks: Bool? = nil
     ) {
-        recommendations = RecommendationEngine().recommendations(
+        recommendations = RecommendationEngine().rankedRecommendations(
             tasks: tasks,
             availableTime: availableTime,
             energy: energy
@@ -30,15 +30,19 @@ struct RecommendationView: View {
         self.hasAnyTasks = hasAnyTasks ?? !tasks.isEmpty
     }
 
-    init(recommendations: [TaskItem], hasAnyTasks: Bool? = nil) {
+    init(recommendations: [RankedRecommendation], hasAnyTasks: Bool? = nil) {
         self.recommendations = recommendations
         self.hasAnyTasks = hasAnyTasks ?? !recommendations.isEmpty
     }
 
-    private var currentTask: TaskItem? {
+    private var currentRecommendation: RankedRecommendation? {
         recommendations.indices.contains(currentIndex)
             ? recommendations[currentIndex]
             : nil
+    }
+
+    private var currentTask: TaskItem? {
+        currentRecommendation?.task
     }
 
     private var hasAnotherRecommendation: Bool {
@@ -54,8 +58,8 @@ struct RecommendationView: View {
 
             Spacer(minLength: 40)
 
-            if let task = currentTask {
-                recommendationContent(for: task)
+            if let recommendation = currentRecommendation {
+                recommendationContent(recommendation)
             } else {
                 emptyContent
             }
@@ -77,8 +81,10 @@ struct RecommendationView: View {
         }
     }
 
-    private func recommendationContent(for task: TaskItem) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private func recommendationContent(_ recommendation: RankedRecommendation) -> some View {
+        let task = recommendation.task
+
+        return VStack(alignment: .leading, spacing: 0) {
             Text("YOUR NEXT MOVE")
                 .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(2.2)
@@ -112,8 +118,9 @@ struct RecommendationView: View {
                 .padding(.top, 36)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Fits the time you have.")
-                Text("Matches your energy.")
+                ForEach(recommendation.explanation.lines, id: \.self) { line in
+                    Text(line)
+                }
             }
             .nextFont(17)
             .foregroundStyle(NextTheme.secondary)
@@ -125,7 +132,7 @@ struct RecommendationView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(task.title). \(task.durationMinutes) minutes. \(task.goal). Fits the time you have. Matches your energy."
+            "\(task.title). \(task.durationMinutes) minutes. \(task.goal). \(recommendation.explanation.accessibilityText)"
         )
     }
 

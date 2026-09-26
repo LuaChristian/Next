@@ -15,6 +15,8 @@ struct TaskItem: Identifiable, Hashable {
     let energyRequired: EnergyLevel
     let area: String
     let goal: String
+    let goalPriority: GoalPriority
+    let lastFocusedAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -23,7 +25,9 @@ struct TaskItem: Identifiable, Hashable {
         durationMinutes: Int,
         energyRequired: EnergyLevel,
         area: String,
-        goal: String
+        goal: String,
+        goalPriority: GoalPriority = .normal,
+        lastFocusedAt: Date? = nil
     ) {
         self.id = id
         self.goalID = goalID
@@ -32,5 +36,7 @@ struct TaskItem: Identifiable, Hashable {
         self.energyRequired = energyRequired
         self.area = area
         self.goal = goal
+        self.goalPriority = goalPriority
+        self.lastFocusedAt = lastFocusedAt
     }
 }

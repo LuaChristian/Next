@@ -25,7 +25,7 @@ enum GoalArea: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum GoalPriority: String, CaseIterable, Identifiable, Codable {
+enum GoalPriority: String, CaseIterable, Identifiable, Codable, Comparable {
     case low
     case normal
     case high
@@ -34,6 +34,18 @@ enum GoalPriority: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         rawValue.capitalized
+    }
+
+    var rank: Int {
+        switch self {
+        case .high: 3
+        case .normal: 2
+        case .low: 1
+        }
+    }
+
+    static func < (lhs: GoalPriority, rhs: GoalPriority) -> Bool {
+        lhs.rank < rhs.rank
     }
 }
 
@@ -133,6 +145,12 @@ final class Goal {
         GardenGrowth.stage(for: totalFocusedDuration)
     }
 
+    /// Most recent FocusSession for this Goal. Nil means never worked.
+    /// Derived from persisted sessions; not stored.
+    var lastFocusedAt: Date? {
+        focusSessions.map(\.completedAt).max()
+    }
+
     var progressMetricsLabel: String {
         "\(GardenMetrics.sessionCountLabel(sessionCount))  ·  \(GardenMetrics.focusedDurationLabel(seconds: totalFocusedDuration))"
     }
@@ -195,6 +213,10 @@ final class GoalTask {
     }
 
     var asTaskItem: TaskItem {
+        asTaskItem(lastFocusedAt: goal?.lastFocusedAt)
+    }
+
+    func asTaskItem(lastFocusedAt: Date?) -> TaskItem {
         TaskItem(
             id: id,
             goalID: goal?.id,
@@ -202,13 +224,34 @@ final class GoalTask {
             durationMinutes: durationMinutes,
             energyRequired: energyRequired,
             area: goal?.area.title ?? "",
-            goal: goal?.title ?? ""
+            goal: goal?.title ?? "",
+            goalPriority: goal?.priority ?? .normal,
+            lastFocusedAt: lastFocusedAt
         )
     }
 }
 
 extension Collection where Element == GoalTask {
     var recommendationItems: [TaskItem] {
-        filter(\.isActive).map(\.asTaskItem)
+        let active = filter(\.isActive)
+        var recency: [UUID: Date] = [:]
+        var scanned = Set<UUID>()
+        return active.map { task in
+            let last: Date?
+            if let goal = task.goal {
+                if scanned.contains(goal.id) {
+                    last = recency[goal.id]
+                } else {
+                    scanned.insert(goal.id)
+                    last = goal.lastFocusedAt
+                    if let last {
+                        recency[goal.id] = last
+                    }
+                }
+            } else {
+                last = nil
+            }
+            return task.asTaskItem(lastFocusedAt: last)
+        }
     }
 }

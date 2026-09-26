@@ -12,119 +12,425 @@ import Testing
 
 struct RecommendationEngineTests {
     private let engine = RecommendationEngine()
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let threeDaysAgo = Date(timeIntervalSince1970: 1_800_000_000 - 3 * 24 * 60 * 60)
+    private let tenDaysAgo = Date(timeIntervalSince1970: 1_800_000_000 - 10 * 24 * 60 * 60)
+    private let twentyMinutesAgo = Date(timeIntervalSince1970: 1_800_000_000 - 20 * 60)
 
-    private let amino = TaskItem(
-        title: "Review amino acids",
-        durationMinutes: 25,
-        energyRequired: .good,
-        area: "Education",
-        goal: "Study for MCAT"
-    )
-    private let clean = TaskItem(
-        title: "Clean your space",
-        durationMinutes: 15,
-        energyRequired: .low,
-        area: "Personal",
-        goal: "Keep your space organized"
-    )
-    private let coding = TaskItem(
-        title: "Coding practice",
-        durationMinutes: 45,
-        energyRequired: .ready,
-        area: "Career",
-        goal: "Improve programming"
-    )
-    private let flashcards = TaskItem(
-        title: "Review flashcards",
-        durationMinutes: 15,
-        energyRequired: .low,
-        area: "Education",
-        goal: "Study for MCAT"
-    )
+    private func item(
+        _ title: String,
+        minutes: Int = 30,
+        energy: EnergyLevel = .good,
+        goal: String,
+        priority: GoalPriority = .normal,
+        lastFocusedAt: Date? = nil,
+        goalID: UUID = UUID()
+    ) -> TaskItem {
+        TaskItem(
+            goalID: goalID,
+            title: title,
+            durationMinutes: minutes,
+            energyRequired: energy,
+            area: "Education",
+            goal: goal,
+            goalPriority: priority,
+            lastFocusedAt: lastFocusedAt
+        )
+    }
 
     @Test func timeFilterExcludesTasksThatExceedAvailableTime() {
-        let result = engine.recommendations(
-            tasks: [coding, amino],
-            availableTime: .thirty,
-            energy: .ready
-        )
-
+        let coding = item("Coding practice", minutes: 45, energy: .ready, goal: "Improve programming")
+        let amino = item("Review amino acids", minutes: 25, goal: "MCAT", priority: .high)
+        let result = engine.recommendations(tasks: [coding, amino], availableTime: .thirty, energy: .ready)
         #expect(result.contains(where: { $0.id == coding.id }) == false)
         #expect(result.contains(where: { $0.id == amino.id }))
     }
 
     @Test func energyFilterExcludesTasksThatRequireMoreEnergy() {
-        let result = engine.recommendations(
-            tasks: [coding, amino],
-            availableTime: .sixty,
-            energy: .good
-        )
-
+        let coding = item("Coding practice", minutes: 45, energy: .ready, goal: "Improve programming")
+        let amino = item("Review amino acids", minutes: 25, goal: "MCAT", priority: .high)
+        let result = engine.recommendations(tasks: [coding, amino], availableTime: .sixty, energy: .good)
         #expect(result.contains(where: { $0.id == coding.id }) == false)
         #expect(result.contains(where: { $0.id == amino.id }))
     }
 
     @Test func lowerEnergyTasksRemainEligible() {
-        let result = engine.recommendations(
-            tasks: [clean],
-            availableTime: .thirty,
-            energy: .good
-        )
-
+        let clean = item("Clean your space", minutes: 15, energy: .low, goal: "Space")
+        let result = engine.recommendations(tasks: [clean], availableTime: .thirty, energy: .good)
         #expect(result.contains(where: { $0.id == clean.id }))
     }
 
-    @Test func betterTimeFitRanksHigher() {
-        let result = engine.recommendations(
-            tasks: [flashcards, amino],
-            availableTime: .thirty,
-            energy: .good
-        )
-
+    @Test func betterTimeFitRanksHigherWhenPriorityAndRecencyTie() {
+        let flashcards = item("Review flashcards", minutes: 15, energy: .low, goal: "MCAT", priority: .high)
+        let amino = item("Review amino acids", minutes: 25, goal: "MCAT", priority: .high)
+        let result = engine.recommendations(tasks: [flashcards, amino], availableTime: .thirty, energy: .good)
         #expect(result.map(\.id) == [amino.id, flashcards.id])
     }
 
     @Test func closerEnergyRanksHigherWhenDurationMatches() {
-        let low = TaskItem(
-            title: "Low energy match",
-            durationMinutes: 20,
-            energyRequired: .low,
-            area: "Personal",
-            goal: "Rest"
-        )
-        let good = TaskItem(
-            title: "Good energy match",
-            durationMinutes: 20,
-            energyRequired: .good,
-            area: "Education",
-            goal: "Study"
-        )
-
-        let result = engine.recommendations(
-            tasks: [low, good],
-            availableTime: .thirty,
-            energy: .good
-        )
-
+        let low = item("Low energy match", minutes: 20, energy: .low, goal: "Rest")
+        let good = item("Good energy match", minutes: 20, goal: "Study")
+        let result = engine.recommendations(tasks: [low, good], availableTime: .thirty, energy: .good)
         #expect(result.map(\.id) == [good.id, low.id])
     }
 
     @Test func rankingIsDeterministic() {
+        let coding = item("Coding practice", minutes: 45, energy: .ready, goal: "Career")
+        let flashcards = item("Review flashcards", minutes: 15, energy: .low, goal: "MCAT", priority: .high)
+        let amino = item("Review amino acids", minutes: 25, goal: "MCAT", priority: .high)
+        let clean = item("Clean your space", minutes: 15, energy: .low, goal: "Space")
         let tasks = [coding, flashcards, amino, clean]
-
-        let first = engine.recommendations(
-            tasks: tasks,
-            availableTime: .thirty,
-            energy: .good
-        )
-        let second = engine.recommendations(
-            tasks: tasks,
-            availableTime: .thirty,
-            energy: .good
-        )
-
+        let first = engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good)
+        let second = engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good)
         #expect(first.map(\.id) == second.map(\.id))
         #expect(first.map(\.id) == [amino.id, flashcards.id, clean.id])
+    }
+
+    @Test func highPriorityRanksAboveNormal() {
+        let normal = item("Normal task", goal: "Portfolio", priority: .normal)
+        let high = item("High task", minutes: 15, energy: .low, goal: "MCAT", priority: .high)
+        let result = engine.recommendations(tasks: [normal, high], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["High task", "Normal task"])
+    }
+
+    @Test func normalPriorityRanksAboveLow() {
+        let low = item("Low goal", goal: "Chores", priority: .low)
+        let normal = item("Normal goal", minutes: 15, energy: .low, goal: "Portfolio", priority: .normal)
+        let result = engine.recommendations(tasks: [low, normal], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Normal goal", "Low goal"])
+    }
+
+    @Test func priorityOutranksRecency() {
+        let recentHigh = item("Recent high", goal: "MCAT", priority: .high, lastFocusedAt: twentyMinutesAgo)
+        let staleNormal = item("Stale normal", goal: "Portfolio", priority: .normal, lastFocusedAt: tenDaysAgo)
+        let result = engine.recommendations(tasks: [staleNormal, recentHigh], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Recent high", "Stale normal"])
+    }
+
+    @Test func priorityOutranksBetterDurationFit() {
+        let highShort = item("High short", minutes: 15, goal: "MCAT", priority: .high)
+        let normalPerfect = item("Normal perfect", minutes: 30, goal: "Portfolio", priority: .normal)
+        let result = engine.recommendations(tasks: [normalPerfect, highShort], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["High short", "Normal perfect"])
+    }
+
+    @Test func neverWorkedRanksAbovePreviouslyWorkedWhenPriorityTies() {
+        let worked = item("Worked", goal: "Game Development", lastFocusedAt: tenDaysAgo)
+        let never = item("Never", goal: "Portfolio")
+        let result = engine.recommendations(tasks: [worked, never], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Never", "Worked"])
+    }
+
+    @Test func olderGoalSessionRanksAboveNewerGoalSession() {
+        let newer = item("Newer", goal: "Game Development", lastFocusedAt: twentyMinutesAgo)
+        let older = item("Older", goal: "MCAT", lastFocusedAt: threeDaysAgo)
+        let result = engine.recommendations(tasks: [newer, older], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Older", "Newer"])
+    }
+
+    @Test func sameGoalFallsThroughToDurationRanking() {
+        let goalID = UUID()
+        let short = item("Flashcards", minutes: 15, energy: .low, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo, goalID: goalID)
+        let long = item("Amino", minutes: 30, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo, goalID: goalID)
+        let result = engine.recommendations(tasks: [short, long], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Amino", "Flashcards"])
+    }
+
+    @Test func longerFittingDurationRanksFirstWhenPriorityAndRecencyTie() {
+        let short = item("Fifteen", minutes: 15, goal: "Portfolio")
+        let long = item("Thirty", minutes: 30, goal: "Game Development")
+        let result = engine.recommendations(tasks: [short, long], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Thirty", "Fifteen"])
+    }
+
+    @Test func exactEnergyMatchWinsAfterPreviousTies() {
+        let low = item("Low", minutes: 30, energy: .low, goal: "MCAT", priority: .high)
+        let good = item("Good", minutes: 30, goal: "MCAT", priority: .high)
+        let result = engine.recommendations(tasks: [low, good], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Good", "Low"])
+    }
+
+    @Test func readyEnergyOrdersExactThenGoodThenLow() {
+        let low = item("Low", minutes: 30, energy: .low, goal: "A")
+        let good = item("Good", minutes: 30, energy: .good, goal: "B")
+        let ready = item("Ready", minutes: 30, energy: .ready, goal: "C")
+        let result = engine.recommendations(tasks: [low, good, ready], availableTime: .thirty, energy: .ready)
+        #expect(result.map(\.title) == ["Ready", "Good", "Low"])
+    }
+
+    @Test func stableOriginalOrderResolvesCompleteTies() {
+        let first = item("First", goal: "A")
+        let second = item("Second", goal: "B")
+        let result = engine.recommendations(tasks: [first, second], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["First", "Second"])
+    }
+
+    @Test func repeatedRankingWithUnchangedInputsIsIdentical() {
+        let a = item("A", minutes: 20, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo)
+        let b = item("B", goal: "Portfolio")
+        let c = item("C", goal: "Game Development", lastFocusedAt: twentyMinutesAgo)
+        let tasks = [b, c, a]
+        let first = engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good)
+        let second = engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good)
+        #expect(first.map(\.id) == second.map(\.id))
+        #expect(first.map(\.title) == ["A", "B", "C"])
+    }
+
+    @Test func notThisOneFollowsRankedOrder() {
+        let a = item("A", minutes: 20, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo)
+        let b = item("B", goal: "Portfolio")
+        let c = item("C", goal: "Fitness", priority: .high, lastFocusedAt: now)
+        let ranked = engine.recommendations(tasks: [b, c, a], availableTime: .thirty, energy: .good)
+        #expect(ranked.map(\.title) == ["A", "C", "B"])
+        #expect(ranked.dropFirst().map(\.title) == ["C", "B"])
+        #expect(ranked.dropFirst(2).map(\.title) == ["B"])
+    }
+
+    @Test func exampleAPriorityThenRecency() {
+        let a = item("A", minutes: 20, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo)
+        let b = item("B", goal: "Portfolio")
+        let c = item("C", goal: "Fitness", priority: .high, lastFocusedAt: now)
+        let result = engine.recommendations(tasks: [a, b, c], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["A", "C", "B"])
+    }
+
+    @Test func neverWorkedHighOutranksWorkedHigh() {
+        let worked = item("Worked high", goal: "MCAT", priority: .high, lastFocusedAt: tenDaysAgo)
+        let never = item("Never high", minutes: 15, energy: .low, goal: "Interview", priority: .high)
+        let result = engine.recommendations(tasks: [worked, never], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Never high", "Worked high"])
+    }
+
+    @Test func recentlyWorkedHighOutranksNeverWorkedNormal() {
+        let high = item("Recent high", goal: "MCAT", priority: .high, lastFocusedAt: twentyMinutesAgo)
+        let neverNormal = item("Never normal", goal: "Portfolio")
+        let result = engine.recommendations(tasks: [neverNormal, high], availableTime: .thirty, energy: .good)
+        #expect(result.map(\.title) == ["Recent high", "Never normal"])
+    }
+
+    @Test func ninetyPlusTreatsAvailableTimeAsNinety() {
+        let ninety = item("Ninety", minutes: 90, goal: "Deep work")
+        let tooLong = item("Too long", minutes: 91, goal: "Marathon")
+        let sixty = item("Sixty", minutes: 60, goal: "Studio")
+        let result = engine.recommendations(tasks: [tooLong, ninety, sixty], availableTime: .ninetyPlus, energy: .ready)
+        #expect(result.map(\.title) == ["Ninety", "Sixty"])
+        #expect(TimeOption.ninetyPlus.minutes == 90)
+    }
+
+    @Test func emptyEligibleSetIsSafe() {
+        let long = item("Long", minutes: 60, energy: .ready, goal: "Career")
+        let result = engine.recommendations(tasks: [long], availableTime: .fifteen, energy: .low)
+        #expect(result.isEmpty)
+    }
+
+    @Test func explanationMentionsHighPriorityAndRecency() {
+        let task = item("Review amino acids", minutes: 20, goal: "MCAT", priority: .high, lastFocusedAt: threeDaysAgo)
+        let explanation = engine.explanation(for: task, availableTime: .thirty, energy: .good)
+        #expect(explanation.lines[0] == "Fits your 30 minutes and Good energy.")
+        #expect(explanation.lines[1] == "MCAT is a high-priority goal you haven't worked on recently.")
+    }
+
+    @Test func explanationMentionsNeverWorkedGoal() {
+        let task = item("Update project description", goal: "Portfolio")
+        let explanation = engine.explanation(for: task, availableTime: .fifteen, energy: .low)
+        #expect(explanation.lines[0] == "Fits your 15 minutes and Low energy.")
+        #expect(explanation.lines[1] == "You haven't worked on Portfolio yet.")
+    }
+
+    @Test func explanationMentionsHighPriorityNeverWorked() {
+        let task = item("Review amino acids", goal: "MCAT", priority: .high)
+        let explanation = engine.explanation(for: task, availableTime: .thirty, energy: .good)
+        #expect(explanation.lines[1] == "MCAT is a high-priority goal you haven't worked on yet.")
+    }
+}
+
+struct RecommendationEnginePersistenceTests {
+    private let engine = RecommendationEngine()
+
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try NextPersistence.makeInMemoryContainer())
+    }
+
+    @MainActor
+    private func recommend(from context: ModelContext, time: TimeOption = .thirty, energy: EnergyLevel = .good) throws -> [TaskItem] {
+        engine.recommendations(
+            tasks: try context.fetch(FetchDescriptor<GoalTask>()).recommendationItems,
+            availableTime: time,
+            energy: energy
+        )
+    }
+
+    @MainActor
+    @Test func completedTasksRemainExcluded() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let done = GoalTask(title: "Done", durationMinutes: 30, energyRequired: .good, isCompleted: true, completedAt: Date(), goal: goal)
+        let active = GoalTask(title: "Active", durationMinutes: 15, energyRequired: .low, goal: goal)
+        context.insert(done)
+        context.insert(active)
+        try context.save()
+
+        let result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Active"])
+    }
+
+    @MainActor
+    @Test func yesFocusSessionAffectsRecency() throws {
+        let context = try makeContext()
+        let mcat = Goal(title: "MCAT", area: .education, priority: .high)
+        let portfolio = Goal(title: "Portfolio", area: .career, priority: .high)
+        context.insert(mcat)
+        context.insert(portfolio)
+        let amino = GoalTask(title: "Amino", durationMinutes: 30, energyRequired: .good, goal: mcat)
+        let page = GoalTask(title: "Page", durationMinutes: 30, energyRequired: .good, goal: portfolio)
+        context.insert(amino)
+        context.insert(page)
+        try context.save()
+
+        try FocusSessionStore.commit(
+            result: FocusSessionResult(task: amino.asTaskItem, plannedDurationSeconds: 30 * 60, focusedDurationSeconds: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context,
+            completedAt: Date()
+        )
+        amino.reopen()
+        try context.save()
+
+        let result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Page", "Amino"])
+        #expect(mcat.lastFocusedAt != nil)
+        #expect(portfolio.lastFocusedAt == nil)
+    }
+
+    @MainActor
+    @Test func notYetFocusSessionAlsoAffectsRecency() throws {
+        let context = try makeContext()
+        let mcat = Goal(title: "MCAT", area: .education, priority: .high)
+        let portfolio = Goal(title: "Portfolio", area: .career, priority: .high)
+        context.insert(mcat)
+        context.insert(portfolio)
+        let amino = GoalTask(title: "Amino", durationMinutes: 30, energyRequired: .good, goal: mcat)
+        let page = GoalTask(title: "Page", durationMinutes: 30, energyRequired: .good, goal: portfolio)
+        context.insert(amino)
+        context.insert(page)
+        try context.save()
+
+        try FocusSessionStore.commit(
+            result: FocusSessionResult(task: amino.asTaskItem, plannedDurationSeconds: 30 * 60, focusedDurationSeconds: 20 * 60, endedNaturally: false),
+            taskWasFinished: false,
+            context: context,
+            completedAt: Date()
+        )
+
+        #expect(amino.isCompleted == false)
+        let result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Page", "Amino"])
+    }
+
+    @MainActor
+    @Test func goalWithMultipleSessionsUsesMostRecent() throws {
+        let context = try makeContext()
+        let olderGoal = Goal(title: "Older", area: .education, priority: .normal)
+        let newerGoal = Goal(title: "Newer", area: .creative, priority: .normal)
+        context.insert(olderGoal)
+        context.insert(newerGoal)
+        let olderTask = GoalTask(title: "Older task", durationMinutes: 30, energyRequired: .good, goal: olderGoal)
+        let newerTask = GoalTask(title: "Newer task", durationMinutes: 30, energyRequired: .good, goal: newerGoal)
+        context.insert(olderTask)
+        context.insert(newerTask)
+
+        let oldest = Date(timeIntervalSince1970: 1_000_000)
+        let middle = Date(timeIntervalSince1970: 2_000_000)
+        let newest = Date(timeIntervalSince1970: 3_000_000)
+
+        context.insert(FocusSession(completedAt: oldest, plannedDurationSeconds: 30 * 60, focusedDurationSeconds: 30 * 60, endedNaturally: true, taskWasFinished: false, goal: newerGoal, task: newerTask))
+        context.insert(FocusSession(completedAt: newest, plannedDurationSeconds: 30 * 60, focusedDurationSeconds: 30 * 60, endedNaturally: true, taskWasFinished: true, goal: newerGoal, task: newerTask))
+        context.insert(FocusSession(completedAt: middle, plannedDurationSeconds: 30 * 60, focusedDurationSeconds: 30 * 60, endedNaturally: true, taskWasFinished: false, goal: olderGoal, task: olderTask))
+        try context.save()
+
+        #expect(newerGoal.lastFocusedAt == newest)
+        #expect(olderGoal.lastFocusedAt == middle)
+        let result = try recommend(from: context)
+        #expect(result.map(\.title) == ["Older task", "Newer task"])
+    }
+
+    @MainActor
+    @Test func reopenedTaskBecomesEligible() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Amino", durationMinutes: 30, energyRequired: .good, isCompleted: true, completedAt: Date(), goal: goal)
+        context.insert(task)
+        try context.save()
+        #expect(try recommend(from: context).isEmpty)
+
+        task.reopen()
+        try context.save()
+        #expect(try recommend(from: context).map(\.title) == ["Amino"])
+    }
+
+    @MainActor
+    @Test func rankingDoesNotMutatePersistedData() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Amino", durationMinutes: 30, energyRequired: .good, goal: goal)
+        context.insert(task)
+        context.insert(
+            FocusSession(
+                completedAt: Date(timeIntervalSince1970: 1_800_000_000),
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal,
+                task: task
+            )
+        )
+        try context.save()
+
+        let beforeSessions = try context.fetch(FetchDescriptor<FocusSession>()).count
+        let beforeRecency = goal.lastFocusedAt
+        let beforeCompleted = task.isCompleted
+        _ = try recommend(from: context)
+        _ = try recommend(from: context)
+
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == beforeSessions)
+        #expect(goal.lastFocusedAt == beforeRecency)
+        #expect(task.isCompleted == beforeCompleted)
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(goal.growthStage == .sprout)
+    }
+
+    @MainActor
+    @Test func notThisOneDoesNotMutateGoalRecency() throws {
+        let context = try makeContext()
+        NextPersistence.seedRecommendationEngine(context)
+        let before = Dictionary(
+            uniqueKeysWithValues: try context.fetch(FetchDescriptor<Goal>()).map { ($0.title, $0.lastFocusedAt) }
+        )
+        let ranked = try recommend(from: context)
+        #expect(ranked.count == 4)
+        _ = ranked.dropFirst()
+        let after = Dictionary(
+            uniqueKeysWithValues: try context.fetch(FetchDescriptor<Goal>()).map { ($0.title, $0.lastFocusedAt) }
+        )
+        #expect(before == after)
+    }
+
+    @MainActor
+    @Test func seededManualScenarioRanksPriorityThenRecencyThenTime() throws {
+        let context = try makeContext()
+        NextPersistence.seedRecommendationEngine(context)
+        let result = try recommend(from: context)
+        #expect(result.map(\.title) == [
+            "Review amino acids",
+            "Practice flashcards",
+            "Update project description",
+            "Work on movement system"
+        ])
     }
 }
 

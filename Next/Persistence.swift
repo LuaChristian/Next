@@ -17,6 +17,7 @@ enum NextPersistence {
     static let lifecycleSeedArgument = "UITEST_SEED_TASK_LIFECYCLE"
     static let growthSeedArgument = "UITEST_SEED_GROWTH"
     static let historySeedArgument = "UITEST_SEED_HISTORY"
+    static let recommendationSeedArgument = "UITEST_SEED_RECOMMENDATION_ENGINE"
     static let inMemoryArgument = "UITEST_IN_MEMORY"
     static let storeURLArgument = "UITEST_STORE_URL"
 
@@ -34,6 +35,9 @@ enum NextPersistence {
             if arguments.contains(lifecycleSeedArgument) {
                 seedTaskLifecycle(ModelContext(container))
             }
+            if arguments.contains(recommendationSeedArgument) {
+                seedRecommendationEngine(ModelContext(container))
+            }
             return container
         }
 
@@ -41,6 +45,7 @@ enum NextPersistence {
             || arguments.contains(growthSeedArgument)
             || arguments.contains(historySeedArgument)
             || arguments.contains(lifecycleSeedArgument)
+            || arguments.contains(recommendationSeedArgument)
             || arguments.contains(inMemoryArgument) {
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -56,6 +61,9 @@ enum NextPersistence {
             }
             if arguments.contains(lifecycleSeedArgument) {
                 seedTaskLifecycle(context)
+            }
+            if arguments.contains(recommendationSeedArgument) {
+                seedRecommendationEngine(context)
             }
             return container
         }
@@ -220,6 +228,51 @@ enum NextPersistence {
                 isCompleted: true,
                 completedAt: now,
                 goal: book
+            )
+        )
+
+        try? context.save()
+    }
+
+    static func seedRecommendationEngine(_ context: ModelContext, now: Date = Date()) {
+        let mcat = Goal(title: "MCAT", area: .education, priority: .high)
+        let game = Goal(title: "Game Development", area: .creative, priority: .normal)
+        let portfolio = Goal(title: "Portfolio", area: .career, priority: .normal)
+        [mcat, game, portfolio].forEach(context.insert)
+
+        let amino = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: mcat)
+        let flashcards = GoalTask(title: "Practice flashcards", durationMinutes: 15, energyRequired: .low, goal: mcat)
+        let movement = GoalTask(title: "Work on movement system", durationMinutes: 30, energyRequired: .good, goal: game)
+        let description = GoalTask(title: "Update project description", durationMinutes: 30, energyRequired: .good, goal: portfolio)
+        [amino, flashcards, movement, description].forEach(context.insert)
+
+        let threeDaysAgo = now.addingTimeInterval(-3 * 24 * 60 * 60)
+        let twentyMinutesAgo = now.addingTimeInterval(-20 * 60)
+
+        context.insert(
+            FocusSession(
+                completedAt: threeDaysAgo,
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                taskTitleSnapshot: amino.title,
+                goalTitleSnapshot: mcat.title,
+                goal: mcat,
+                task: amino
+            )
+        )
+        context.insert(
+            FocusSession(
+                completedAt: twentyMinutesAgo,
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 25 * 60,
+                endedNaturally: false,
+                taskWasFinished: false,
+                taskTitleSnapshot: movement.title,
+                goalTitleSnapshot: game.title,
+                goal: game,
+                task: movement
             )
         )
 

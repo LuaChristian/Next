@@ -33,8 +33,8 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["25 MINUTES"].exists)
         XCTAssertTrue(app.staticTexts["EDUCATION"].exists)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].exists)
-        XCTAssertTrue(app.staticTexts["Fits the time you have."].exists)
-        XCTAssertTrue(app.staticTexts["Matches your energy."].exists)
+        XCTAssertTrue(app.staticTexts["Fits your 30 minutes and Good energy."].exists)
+        XCTAssertTrue(app.staticTexts["Study for MCAT is a high-priority goal you haven't worked on yet."].exists)
         XCTAssertTrue(app.buttons["START SESSION →"].exists)
 
         let notThisOne = app.buttons["Not this one"]
@@ -679,6 +679,64 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testRecommendationEngine2Ranking() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_RECOMMENDATION_ENGINE"]
+        app.launch()
+
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["MCAT"].exists)
+        XCTAssertTrue(app.staticTexts["Fits your 30 minutes and Good energy."].exists)
+        XCTAssertTrue(app.staticTexts["MCAT is a high-priority goal you haven't worked on recently."].exists)
+
+        let notThisOne = app.buttons["Not this one"]
+        notThisOne.tap()
+        XCTAssertTrue(app.staticTexts["Practice flashcards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["MCAT"].exists)
+
+        notThisOne.tap()
+        XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["You haven't worked on Portfolio yet."].exists)
+
+        notThisOne.tap()
+        XCTAssertTrue(app.staticTexts["Work on movement system"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["This goal has had less attention recently."].exists)
+        XCTAssertFalse(notThisOne.isEnabled)
+    }
+
+    @MainActor
+    func testRecommendationEngine2Explanations() throws {
+        let review = RecommendationEngineCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_RECOMMENDATION_ENGINE"]
+        app.launch()
+
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["MCAT is a high-priority goal you haven't worked on recently."].exists)
+        review.capture(app, "01 High-priority explanation")
+
+        app.buttons["Not this one"].tap()
+        XCTAssertTrue(app.staticTexts["Practice flashcards"].waitForExistence(timeout: 2))
+        app.buttons["Not this one"].tap()
+        XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["You haven't worked on Portfolio yet."].exists)
+        review.capture(app, "02 Never-worked explanation")
+
+        app.buttons["Not this one"].tap()
+        XCTAssertTrue(app.staticTexts["Work on movement system"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["This goal has had less attention recently."].exists)
+        review.capture(app, "03 Recency explanation")
+    }
+
+    @MainActor
     func testWhitespaceGoalTitleCannotBePlanted() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
@@ -989,6 +1047,30 @@ final class NextUITests: XCTestCase {
         guard timer.waitForExistence(timeout: 2) else { return false }
         let value = timer.value as? String ?? ""
         return value.hasPrefix("\(minutes) minutes") || value.hasPrefix("\(minutes - 1) minutes")
+    }
+}
+
+private struct RecommendationEngineCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M2-Recommendation-Engine"
+    )
+
+    let test: XCTestCase
+
+    init(_ test: XCTestCase) {
+        self.test = test
+    }
+
+    func capture(_ app: XCUIApplication, _ name: String) {
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        let file = Self.directory.appendingPathComponent("\(name).png")
+        try? screenshot.pngRepresentation.write(to: file)
     }
 }
 
