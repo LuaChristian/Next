@@ -450,5 +450,5 @@ private enum OnboardingCanvas {
 
 #Preview {
     OnboardingFlow(onFinished: {})
-        .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
+        .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
 }

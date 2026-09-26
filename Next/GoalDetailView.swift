@@ -29,21 +29,43 @@ struct GoalDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let goal {
-                Text(goal.title)
-                    .font(.system(size: 28, weight: .regular))
-                    .foregroundStyle(.primary)
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(goal.title)
+                            .font(.system(size: 28, weight: .regular))
+                            .foregroundStyle(.primary)
 
-                Text(goal.area.title.uppercased())
-                    .font(.system(size: 13, weight: .medium))
-                    .tracking(1.8)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 10)
+                        Text(goal.area.title.uppercased())
+                            .font(.system(size: 13, weight: .medium))
+                            .tracking(1.8)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 10)
 
-                Text(goal.priority.title.uppercased() + " PRIORITY")
-                    .font(.system(size: 13, weight: .medium))
-                    .tracking(1.4)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                        Text(goal.priority.title.uppercased() + " PRIORITY")
+                            .font(.system(size: 13, weight: .medium))
+                            .tracking(1.4)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+
+                        Text(GardenMetrics.sessionCountLabel(goal.sessionCount))
+                            .font(.system(size: 13, weight: .medium))
+                            .tracking(1.4)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 18)
+
+                        Text(GardenMetrics.focusedDurationLabel(seconds: goal.totalFocusedDuration))
+                            .font(.system(size: 13, weight: .medium))
+                            .tracking(1.4)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    BotanicalPlantView(stage: goal.growthStage)
+                        .frame(width: 64, height: 88)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(goal.progressAccessibilityLabel)
 
                 if goal.tasks.isEmpty {
                     emptyTasks

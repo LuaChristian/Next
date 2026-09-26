@@ -78,13 +78,17 @@ final class Goal {
     @Relationship(deleteRule: .cascade, inverse: \GoalTask.goal)
     var tasks: [GoalTask]
 
+    @Relationship(deleteRule: .cascade, inverse: \FocusSession.goal)
+    var focusSessions: [FocusSession]
+
     init(
         id: UUID = UUID(),
         title: String,
         area: GoalArea,
         priority: GoalPriority,
         createdAt: Date = Date(),
-        tasks: [GoalTask] = []
+        tasks: [GoalTask] = [],
+        focusSessions: [FocusSession] = []
     ) {
         self.id = id
         self.title = title
@@ -92,6 +96,7 @@ final class Goal {
         self.priority = priority
         self.createdAt = createdAt
         self.tasks = tasks
+        self.focusSessions = focusSessions
     }
 
     var sortedTasks: [GoalTask] {
@@ -100,6 +105,26 @@ final class Goal {
 
     var taskCountLabel: String {
         tasks.count == 1 ? "1 TASK" : "\(tasks.count) TASKS"
+    }
+
+    var sessionCount: Int {
+        focusSessions.count
+    }
+
+    var totalFocusedDuration: TimeInterval {
+        focusSessions.reduce(0) { $0 + $1.focusedDurationSeconds }
+    }
+
+    var growthStage: GardenGrowthStage {
+        GardenGrowth.stage(for: totalFocusedDuration)
+    }
+
+    var progressMetricsLabel: String {
+        "\(GardenMetrics.sessionCountLabel(sessionCount))  ·  \(GardenMetrics.focusedDurationLabel(seconds: totalFocusedDuration))"
+    }
+
+    var progressAccessibilityLabel: String {
+        "\(title). \(area.title). \(GardenMetrics.sessionCountSpoken(sessionCount)). \(GardenMetrics.focusedDurationSpoken(seconds: totalFocusedDuration))"
     }
 }
 
@@ -112,13 +137,17 @@ final class GoalTask {
     var createdAt: Date
     var goal: Goal?
 
+    @Relationship(deleteRule: .nullify, inverse: \FocusSession.task)
+    var focusSessions: [FocusSession]
+
     init(
         id: UUID = UUID(),
         title: String,
         durationMinutes: Int,
         energyRequired: EnergyLevel,
         createdAt: Date = Date(),
-        goal: Goal? = nil
+        goal: Goal? = nil,
+        focusSessions: [FocusSession] = []
     ) {
         self.id = id
         self.title = title
@@ -126,11 +155,13 @@ final class GoalTask {
         self.energyRequired = energyRequired
         self.createdAt = createdAt
         self.goal = goal
+        self.focusSessions = focusSessions
     }
 
     var asTaskItem: TaskItem {
         TaskItem(
             id: id,
+            goalID: goal?.id,
             title: title,
             durationMinutes: durationMinutes,
             energyRequired: energyRequired,

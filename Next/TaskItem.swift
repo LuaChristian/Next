@@ -9,6 +9,7 @@ import Foundation
 
 struct TaskItem: Identifiable, Hashable {
     let id: UUID
+    let goalID: UUID?
     let title: String
     let durationMinutes: Int
     let energyRequired: EnergyLevel
@@ -17,6 +18,7 @@ struct TaskItem: Identifiable, Hashable {
 
     init(
         id: UUID = UUID(),
+        goalID: UUID? = nil,
         title: String,
         durationMinutes: Int,
         energyRequired: EnergyLevel,
@@ -24,6 +26,7 @@ struct TaskItem: Identifiable, Hashable {
         goal: String
     ) {
         self.id = id
+        self.goalID = goalID
         self.title = title
         self.durationMinutes = durationMinutes
         self.energyRequired = energyRequired

@@ -172,5 +172,5 @@ private struct RecommendationInput: Hashable, Identifiable {
     NavigationStack {
         HomeView()
     }
-    .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
+    .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
 }

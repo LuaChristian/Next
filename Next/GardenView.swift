@@ -90,20 +90,33 @@ struct GardenView: View {
     }
 
     private func goalRow(_ goal: Goal) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(goal.title)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(.primary)
+        HStack(alignment: .center, spacing: 18) {
+            BotanicalPlantView(stage: goal.growthStage)
+                .frame(width: 52, height: 72)
 
-            Text("\(goal.area.title.uppercased())  ·  \(goal.taskCountLabel)")
-                .font(.system(size: 13, weight: .medium))
-                .tracking(1.2)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(goal.title)
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(.primary)
+
+                Text(goal.area.title.uppercased())
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+
+                Text(goal.progressMetricsLabel)
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 22)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(goal.progressAccessibilityLabel)
+        .accessibilityValue("stage \(goal.growthStage.rawValue)")
+        .accessibilityIdentifier("gardenGoal-\(goal.title)")
     }
 
     private var plantAction: some View {
@@ -127,9 +140,31 @@ struct GardenView: View {
     }
 }
 
-#Preview {
+#Preview("Empty garden") {
     NavigationStack {
         GardenView()
     }
-    .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
+    .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
+}
+
+#Preview("Full plant growth") {
+    GardenGrowthPreview()
+}
+
+private struct GardenGrowthPreview: View {
+    let container: ModelContainer
+
+    init() {
+        let configuration = ModelConfiguration(schema: NextPersistence.schema, isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: NextPersistence.schema, configurations: [configuration])
+        NextPersistence.seedGrowthStages(ModelContext(container))
+        self.container = container
+    }
+
+    var body: some View {
+        NavigationStack {
+            GardenView()
+        }
+        .modelContainer(container)
+    }
 }

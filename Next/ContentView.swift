@@ -31,5 +31,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Goal.self, GoalTask.self], inMemory: true)
+        .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
 }

@@ -389,6 +389,79 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
     }
 
+    @MainActor
+    func testFinishEarlySessionAppearsInGarden() throws {
+        let app = launchSeededApp()
+        navigateToFirstRecommendation(in: app)
+
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["NOT YET"].tap()
+        app.buttons["I'M DONE"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+
+        let row = app.descendants(matching: .any)["gardenGoal-Study for MCAT"]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.label.contains("1 session"))
+        XCTAssertTrue(row.label.contains("focused"))
+        XCTAssertFalse(row.label.contains("0 minutes focused"))
+    }
+
+    @MainActor
+    func testSeededGrowthStagesRender() throws {
+        let app = launchGrowthShowcase()
+
+        XCTAssertEqual(gardenRow("Beginning study", in: app).value as? String, "stage 0")
+        XCTAssertTrue(gardenRow("Beginning study", in: app).label.contains("0 sessions"))
+        XCTAssertEqual(gardenRow("First growth", in: app).value as? String, "stage 1")
+        XCTAssertTrue(gardenRow("First growth", in: app).label.contains("30 minutes focused"))
+        XCTAssertEqual(gardenRow("Young plant", in: app).value as? String, "stage 2")
+        XCTAssertTrue(gardenRow("Young plant", in: app).label.contains("2 hours focused"))
+        XCTAssertEqual(gardenRow("Growing plant", in: app).value as? String, "stage 3")
+        XCTAssertTrue(gardenRow("Growing plant", in: app).label.contains("5 hours focused"))
+        XCTAssertEqual(gardenRow("Mature plant", in: app).value as? String, "stage 4")
+        XCTAssertTrue(gardenRow("Mature plant", in: app).label.contains("10 hours focused"))
+    }
+
+    @MainActor
+    func testShowcaseFullPlantGrowth() throws {
+        let app = launchGrowthShowcase()
+        attachScreenshot(of: app, named: "01 Garden — all five stages")
+
+        let stages: [(title: String, stage: String, spoken: String, detailMetric: String)] = [
+            ("Beginning study", "stage 0", "0 minutes focused", "0 MIN FOCUSED"),
+            ("First growth", "stage 1", "30 minutes focused", "30 MIN FOCUSED"),
+            ("Young plant", "stage 2", "2 hours focused", "2H FOCUSED"),
+            ("Growing plant", "stage 3", "5 hours focused", "5H FOCUSED"),
+            ("Mature plant", "stage 4", "10 hours focused", "10H FOCUSED")
+        ]
+
+        for (index, stage) in stages.enumerated() {
+            let row = gardenRow(stage.title, in: app)
+            reveal(row, in: app)
+            XCTAssertTrue(row.waitForExistence(timeout: 2), "Missing Garden row for \(stage.title)")
+            XCTAssertEqual(row.value as? String, stage.stage)
+            XCTAssertTrue(row.label.contains(stage.spoken), row.label)
+
+            row.tap()
+            XCTAssertTrue(app.staticTexts[stage.title].waitForExistence(timeout: 2))
+            XCTAssertTrue(
+                app.staticTexts[stage.detailMetric].waitForExistence(timeout: 2)
+                    || app.descendants(matching: .any).containing(
+                        NSPredicate(format: "label CONTAINS %@", stage.spoken)
+                    ).firstMatch.exists
+            )
+            attachScreenshot(of: app, named: String(format: "%02d Goal Detail — %@", index + 2, stage.title))
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        }
+    }
+
     private func launchFreshOnboarding() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -413,6 +486,34 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.buttons["START USING NEXT →"].waitForExistence(timeout: 2))
         app.buttons["START USING NEXT →"].tap()
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+    }
+
+    private func launchGrowthShowcase() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GROWTH"]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 2))
+        return app
+    }
+
+    private func gardenRow(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["gardenGoal-\(title)"]
+    }
+
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        var attempts = 0
+        while attempts < 4 && (!element.exists || !element.isHittable) {
+            app.swipeUp()
+            attempts += 1
+        }
+    }
+
+    private func attachScreenshot(of app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func launchSeededApp() -> XCUIApplication {

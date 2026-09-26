@@ -5,15 +5,18 @@
 //  Created by Christian Lua-Lua on 9/25/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct CompletionView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
 
     let result: FocusSessionResult
     let onFinished: () -> Void
 
     @State private var completion = SessionCompletionState()
+    @State private var didCommit = false
 
     private var canvasColor: Color {
         colorScheme == .dark
@@ -135,7 +138,7 @@ struct CompletionView: View {
     private var exitActions: some View {
         VStack(spacing: 8) {
             Button("WHAT'S NEXT? →") {
-                onFinished()
+                commitAndFinish()
             }
             .font(.system(size: 13, weight: .semibold))
             .tracking(2.2)
@@ -144,13 +147,30 @@ struct CompletionView: View {
             .disabled(!completion.canContinue)
 
             Button("I'M DONE") {
-                onFinished()
+                commitAndFinish()
             }
             .font(.system(size: 16, weight: .regular))
             .foregroundStyle(completion.canContinue ? Color.primary : Color.secondary.opacity(0.45))
             .frame(maxWidth: .infinity, minHeight: 44)
             .disabled(!completion.canContinue)
         }
+    }
+
+    private func commitAndFinish() {
+        guard !didCommit else { return }
+        didCommit = true
+        if let answer = completion.taskCompletion {
+            do {
+                try FocusSessionStore.commit(
+                    result: result,
+                    taskWasFinished: answer == .completed,
+                    context: modelContext
+                )
+            } catch {
+                // Leave Completion without claiming Garden progress.
+            }
+        }
+        onFinished()
     }
 }
 
@@ -170,4 +190,5 @@ struct CompletionView: View {
         ),
         onFinished: {}
     )
+    .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
 }
