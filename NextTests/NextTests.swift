@@ -486,6 +486,8 @@ struct PersistenceTests {
         #expect(tasks.first?.title == "Review amino acids")
         #expect(tasks.first?.goal?.title == "Study for MCAT")
         #expect(tasks.first?.asTaskItem.area == "Education")
+        #expect(tasks.first?.isCompleted == false)
+        #expect(tasks.first?.completedAt == nil)
     }
 }
 
@@ -796,10 +798,12 @@ struct FocusSessionPersistenceTests {
         #expect(goal.totalFocusedDuration == 1_500.0)
         #expect(goal.focusSessions.first?.taskWasFinished == false)
         #expect(task.tasksAreUnchanged)
+        #expect(task.isCompleted == false)
+        #expect(task.completedAt == nil)
     }
 
     @MainActor
-    @Test func yesCountsOnceWithoutCompletingTask() throws {
+    @Test func yesCompletesTheTaskOnce() throws {
         let context = try makeContext()
         let (goal, task) = try plantMCAT(in: context)
 
@@ -814,6 +818,8 @@ struct FocusSessionPersistenceTests {
         #expect(goal.focusSessions.first?.taskWasFinished == true)
         #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
         #expect(task.title == "Review amino acids")
+        #expect(task.isCompleted)
+        #expect(task.completedAt != nil)
     }
 
     @MainActor
@@ -1167,6 +1173,384 @@ struct HistoryPresentationTests {
         #expect(goal.totalFocusedDuration == 1_800)
         #expect(goal.growthStage == .sprout)
         #expect(GardenGrowth.stage(for: goal.totalFocusedDuration) == .sprout)
+    }
+}
+
+struct TaskLifecycleTests {
+    private let engine = RecommendationEngine()
+
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try NextPersistence.makeInMemoryContainer())
+    }
+
+    @MainActor
+    private func plantMCAT(in context: ModelContext) throws -> (Goal, GoalTask) {
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(
+            title: "Review amino acids",
+            durationMinutes: 30,
+            energyRequired: .good,
+            goal: goal
+        )
+        context.insert(task)
+        try context.save()
+        return (goal, task)
+    }
+
+    private func result(
+        for task: GoalTask,
+        focused: TimeInterval,
+        planned: TimeInterval = 30 * 60,
+        endedNaturally: Bool
+    ) -> FocusSessionResult {
+        FocusSessionResult(
+            task: task.asTaskItem,
+            plannedDurationSeconds: planned,
+            focusedDurationSeconds: focused,
+            endedNaturally: endedNaturally
+        )
+    }
+
+    @MainActor
+    private func recommend(
+        from context: ModelContext,
+        time: TimeOption = .thirty,
+        energy: EnergyLevel = .good
+    ) throws -> [TaskItem] {
+        engine.recommendations(
+            tasks: try context.fetch(FetchDescriptor<GoalTask>()).recommendationItems,
+            availableTime: time,
+            energy: energy
+        )
+    }
+
+    @MainActor
+    @Test func existingGoalTaskDefaultsToActive() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+
+        #expect(task.isCompleted == false)
+        #expect(task.completedAt == nil)
+        #expect(task.isActive)
+    }
+
+    @MainActor
+    @Test func completingATaskSetsCompletedState() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+        let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context,
+            completedAt: completedAt
+        )
+
+        #expect(task.isCompleted)
+        #expect(task.completedAt == completedAt)
+        #expect(task.isActive == false)
+    }
+
+    @MainActor
+    @Test func notYetLeavesTheTaskActive() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 25 * 60, endedNaturally: false),
+            taskWasFinished: false,
+            context: context
+        )
+
+        #expect(task.isCompleted == false)
+        #expect(task.completedAt == nil)
+        #expect(task.isActive)
+    }
+
+    @MainActor
+    @Test func completedTasksAreExcludedFromRecommendationEligibility() throws {
+        let context = try makeContext()
+        let (goal, amino) = try plantMCAT(in: context)
+        let flashcards = GoalTask(
+            title: "Review flashcards",
+            durationMinutes: 15,
+            energyRequired: .low,
+            goal: goal
+        )
+        context.insert(flashcards)
+        try context.save()
+
+        try FocusSessionStore.commit(
+            result: result(for: amino, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+
+        let result = try recommend(from: context)
+        #expect(result.contains(where: { $0.id == amino.id }) == false)
+        #expect(result.contains(where: { $0.id == flashcards.id }))
+    }
+
+    @MainActor
+    @Test func reopenedTasksBecomeRecommendationEligibleAgain() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+        #expect(try recommend(from: context).isEmpty)
+
+        task.reopen()
+        try context.save()
+
+        let result = try recommend(from: context)
+        #expect(result.contains(where: { $0.id == task.id }))
+    }
+
+    @MainActor
+    @Test func reopeningClearsCompletedAt() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+        task.complete(at: Date())
+        try context.save()
+        #expect(task.completedAt != nil)
+
+        task.reopen()
+        try context.save()
+
+        #expect(task.isCompleted == false)
+        #expect(task.completedAt == nil)
+    }
+
+    @MainActor
+    @Test func reopeningDoesNotMutateHistoricalFocusSessions() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+        let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context,
+            completedAt: completedAt
+        )
+
+        let session = try context.fetch(FetchDescriptor<FocusSession>()).first
+        let sessionID = session?.id
+        #expect(session?.taskWasFinished == true)
+        #expect(session?.completedAt == completedAt)
+        #expect(session?.focusedDurationSeconds == 1_800)
+
+        task.reopen()
+        try context.save()
+
+        let unchanged = try context.fetch(FetchDescriptor<FocusSession>()).first
+        #expect(unchanged?.id == sessionID)
+        #expect(unchanged?.taskWasFinished == true)
+        #expect(unchanged?.completedAt == completedAt)
+        #expect(unchanged?.focusedDurationSeconds == 1_800)
+        #expect(unchanged?.taskTitleSnapshot == "Review amino acids")
+    }
+
+    @MainActor
+    @Test func completingATaskDoesNotDeleteItsFocusSessions() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 18 * 60, endedNaturally: false),
+            taskWasFinished: false,
+            context: context
+        )
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 2)
+        #expect(task.focusSessions.count == 2)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
+    }
+
+    @MainActor
+    @Test func focusSessionPersistsExactlyOncePerCommit() throws {
+        let context = try makeContext()
+        let (goal, task) = try plantMCAT(in: context)
+        var completion = SessionCompletionState()
+        completion.select(.completed)
+        completion.select(.notCompleted)
+        completion.select(.completed)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 20 * 60, endedNaturally: false),
+            taskWasFinished: completion.taskCompletion == .completed,
+            context: context
+        )
+
+        #expect(goal.sessionCount == 1)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(task.isCompleted)
+    }
+
+    @MainActor
+    @Test func taskWasFinishedFollowsYesAndNotYet() throws {
+        let context = try makeContext()
+        let (goal, first) = try plantMCAT(in: context)
+        let second = GoalTask(
+            title: "Review flashcards",
+            durationMinutes: 15,
+            energyRequired: .low,
+            goal: goal
+        )
+        context.insert(second)
+        try context.save()
+
+        try FocusSessionStore.commit(
+            result: result(for: first, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+        try FocusSessionStore.commit(
+            result: result(for: second, focused: 15 * 60, planned: 15 * 60, endedNaturally: true),
+            taskWasFinished: false,
+            context: context
+        )
+
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>()).sorted { $0.completedAt < $1.completedAt }
+        #expect(sessions.map(\.taskWasFinished) == [true, false])
+        #expect(first.isCompleted)
+        #expect(second.isCompleted == false)
+    }
+
+    @MainActor
+    @Test func gardenProgressRemainsDerivedFromFocusSessionTime() throws {
+        let context = try makeContext()
+        let (goal, task) = try plantMCAT(in: context)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(goal.growthStage == .sprout)
+        #expect(GardenGrowth.stage(for: goal.totalFocusedDuration) == .sprout)
+
+        task.reopen()
+        try context.save()
+
+        #expect(goal.totalFocusedDuration == 1_800)
+        #expect(goal.growthStage == .sprout)
+        #expect(task.isCompleted == false)
+    }
+
+    @MainActor
+    @Test func historyTasksFinishedUsesSessionNotCurrentTaskState() throws {
+        let context = try makeContext()
+        let (_, task) = try plantMCAT(in: context)
+        let now = Date()
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context,
+            completedAt: now
+        )
+
+        task.reopen()
+        try context.save()
+
+        let records = try context.fetch(FetchDescriptor<FocusSession>()).map(\.historyRecord)
+        let summary = HistoryPresentation.weeklySummary(sessions: records, referenceDate: now)
+
+        #expect(task.isCompleted == false)
+        #expect(summary.tasksFinished == 1)
+        #expect(records.first?.taskWasFinished == true)
+    }
+
+    @MainActor
+    @Test func relaunchPreservesTaskCompletionState() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-v2-m1-\(UUID().uuidString).store")
+        let taskID: UUID
+        let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            let (_, task) = try plantMCAT(in: context)
+            taskID = task.id
+            try FocusSessionStore.commit(
+                result: result(for: task, focused: 30 * 60, endedNaturally: true),
+                taskWasFinished: true,
+                context: context,
+                completedAt: completedAt
+            )
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let tasks = try context.fetch(FetchDescriptor<GoalTask>())
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        let task = tasks.first { $0.id == taskID }
+
+        #expect(tasks.count == 1)
+        #expect(task?.isCompleted == true)
+        #expect(task?.completedAt == completedAt)
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.taskWasFinished == true)
+        #expect(try recommend(from: context).isEmpty)
+    }
+
+    @MainActor
+    @Test func goalContainingOnlyCompletedTasksIsHandledCorrectly() throws {
+        let context = try makeContext()
+        let (goal, task) = try plantMCAT(in: context)
+
+        try FocusSessionStore.commit(
+            result: result(for: task, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+
+        #expect(goal.activeTasks.isEmpty)
+        #expect(goal.completedTasks.map(\.id) == [task.id])
+        #expect(goal.tasks.count == 1)
+        #expect(goal.tasks.recommendationItems.isEmpty)
+        #expect(try recommend(from: context).isEmpty)
+    }
+
+    @MainActor
+    @Test func whatsNextCannotRecommendACompletedTask() throws {
+        let context = try makeContext()
+        let (goal, amino) = try plantMCAT(in: context)
+        context.insert(
+            GoalTask(
+                title: "Review flashcards",
+                durationMinutes: 15,
+                energyRequired: .low,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        try FocusSessionStore.commit(
+            result: result(for: amino, focused: 30 * 60, endedNaturally: true),
+            taskWasFinished: true,
+            context: context
+        )
+
+        #expect(amino.isCompleted)
+        #expect(try recommend(from: context).contains(where: { $0.title == "Review amino acids" }) == false)
+        #expect(try recommend(from: context).contains(where: { $0.title == "Review flashcards" }))
     }
 }
 

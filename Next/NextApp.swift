@@ -22,6 +22,7 @@ struct NextApp: App {
             _hasCompletedOnboarding = State(
                 initialValue: OnboardingPreference.resolveCompleted(goalsExist: goalsExist)
             )
+            NextTheme.applyChrome()
         } catch {
             fatalError("Could not create persistent ModelContainer: \(error)")
         }
@@ -39,6 +40,7 @@ struct NextApp: App {
                 }
             }
             .preferredColorScheme(.light)
+            .tint(NextTheme.botanical)
         }
         .modelContainer(container)
     }

@@ -91,6 +91,10 @@ enum FocusSessionStore {
         }
 
         let tasks = try context.fetch(FetchDescriptor<GoalTask>(predicate: #Predicate { $0.id == taskID }))
+        let task = tasks.first
+        if taskWasFinished {
+            task?.complete(at: completedAt)
+        }
         let session = FocusSession(
             completedAt: completedAt,
             plannedDurationSeconds: result.plannedDurationSeconds,
@@ -100,7 +104,7 @@ enum FocusSessionStore {
             taskTitleSnapshot: result.task.title,
             goalTitleSnapshot: result.task.goal,
             goal: goal,
-            task: tasks.first
+            task: task
         )
         context.insert(session)
         try context.save()

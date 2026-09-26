@@ -8,25 +8,49 @@
 import SwiftUI
 
 enum NextTheme {
-    /// Warm ivory canvas used across V1.
-    static let canvas = Color(red: 0.98, green: 0.97, blue: 0.94)
+    /// Ivory canvas. #FAF7F0
+    static let canvas = Color(red: 250 / 255, green: 247 / 255, blue: 240 / 255)
 
-    /// Near-black primary ink.
-    static let ink = Color(red: 0.10, green: 0.10, blue: 0.09)
+    /// Near-black warm ink. #1A1A17
+    static let ink = Color(red: 26 / 255, green: 26 / 255, blue: 23 / 255)
 
-    /// Secondary metadata. Darkened from system gray to meet ~4.5:1 on canvas.
-    static let secondary = Color(red: 0.38, green: 0.37, blue: 0.34)
+    /// Supporting copy. #615E57
+    static let secondary = Color(red: 97 / 255, green: 94 / 255, blue: 87 / 255)
 
-    /// Botanical green (matches AccentColor light appearance).
-    static let botanical = Color(red: 0.239, green: 0.353, blue: 0.270)
+    /// Signature accent, aligned to the leaf-arrow icon. #405743
+    static let botanical = Color(red: 64 / 255, green: 87 / 255, blue: 67 / 255)
 
-    /// Disabled actions. Muted but still readable; disabled is also semantic.
-    static let disabled = Color(red: 0.52, green: 0.50, blue: 0.46)
+    /// Disabled / unselected chrome. #857F75
+    static let disabled = Color(red: 133 / 255, green: 127 / 255, blue: 117 / 255)
 
-    /// Thin editorial rules.
-    static let rule = ink.opacity(0.16)
+    /// Warm hairline that sits on ivory without going cool gray.
+    static let rule = Color(red: 115 / 255, green: 105 / 255, blue: 90 / 255).opacity(0.22)
 
     static let pagePadding: CGFloat = 28
+
+    static func applyChrome() {
+        let selected = UIColor(botanical)
+        let muted = UIColor(disabled)
+        let ivory = UIColor(canvas)
+
+        let tab = UITabBarAppearance()
+        tab.configureWithOpaqueBackground()
+        tab.backgroundColor = ivory
+        tab.shadowColor = UIColor(rule)
+        for layout in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
+            layout.normal.iconColor = muted
+            layout.normal.titleTextAttributes = [.foregroundColor: muted]
+            layout.selected.iconColor = selected
+            layout.selected.titleTextAttributes = [.foregroundColor: selected]
+        }
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+        UITabBar.appearance().tintColor = selected
+        UITabBar.appearance().unselectedItemTintColor = muted
+
+        UINavigationBar.appearance().tintColor = selected
+        UITextField.appearance().tintColor = selected
+    }
 }
 
 enum NextInput {

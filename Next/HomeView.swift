@@ -77,7 +77,8 @@ struct HomeView: View {
             RecommendationView(
                 availableTime: input.time,
                 energy: input.energy,
-                tasks: persistedTasks.map(\.asTaskItem)
+                tasks: persistedTasks.recommendationItems,
+                hasAnyTasks: !persistedTasks.isEmpty
             )
         }
     }

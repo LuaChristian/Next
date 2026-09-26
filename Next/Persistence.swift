@@ -9,8 +9,12 @@ import Foundation
 import SwiftData
 
 enum NextPersistence {
+    /// Same model types as V1. V2-M1 adds `GoalTask.isCompleted` (default false)
+    /// and `GoalTask.completedAt` (optional). SwiftData applies a lightweight
+    /// migration; existing rows remain and default to active.
     static let schema = Schema([Goal.self, GoalTask.self, FocusSession.self])
     static let seedArgument = "UITEST_SEED_GARDEN"
+    static let lifecycleSeedArgument = "UITEST_SEED_TASK_LIFECYCLE"
     static let growthSeedArgument = "UITEST_SEED_GROWTH"
     static let historySeedArgument = "UITEST_SEED_HISTORY"
     static let inMemoryArgument = "UITEST_IN_MEMORY"
@@ -27,12 +31,16 @@ enum NextPersistence {
             if arguments.contains(historySeedArgument) {
                 seedHistory(ModelContext(container))
             }
+            if arguments.contains(lifecycleSeedArgument) {
+                seedTaskLifecycle(ModelContext(container))
+            }
             return container
         }
 
         if arguments.contains(seedArgument)
             || arguments.contains(growthSeedArgument)
             || arguments.contains(historySeedArgument)
+            || arguments.contains(lifecycleSeedArgument)
             || arguments.contains(inMemoryArgument) {
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -45,6 +53,9 @@ enum NextPersistence {
             }
             if arguments.contains(historySeedArgument) {
                 seedHistory(context)
+            }
+            if arguments.contains(lifecycleSeedArgument) {
+                seedTaskLifecycle(context)
             }
             return container
         }
@@ -168,6 +179,49 @@ enum NextPersistence {
                 session(arrays, minutes: 25, finished: false, at: older)
             }
         }
+
+        try? context.save()
+    }
+
+    static func seedTaskLifecycle(_ context: ModelContext, now: Date = Date()) {
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(mcat)
+        let amino = GoalTask(
+            title: "Review amino acids",
+            durationMinutes: 25,
+            energyRequired: .good,
+            isCompleted: true,
+            completedAt: now,
+            goal: mcat
+        )
+        context.insert(amino)
+        context.insert(GoalTask(title: "Review flashcards", durationMinutes: 15, energyRequired: .low, goal: mcat))
+        context.insert(
+            FocusSession(
+                completedAt: now,
+                plannedDurationSeconds: 25 * 60,
+                focusedDurationSeconds: 25 * 60,
+                endedNaturally: true,
+                taskWasFinished: true,
+                taskTitleSnapshot: amino.title,
+                goalTitleSnapshot: mcat.title,
+                goal: mcat,
+                task: amino
+            )
+        )
+
+        let book = Goal(title: "Finish book", area: .education, priority: .normal)
+        context.insert(book)
+        context.insert(
+            GoalTask(
+                title: "Read chapter",
+                durationMinutes: 20,
+                energyRequired: .low,
+                isCompleted: true,
+                completedAt: now,
+                goal: book
+            )
+        )
 
         try? context.save()
     }

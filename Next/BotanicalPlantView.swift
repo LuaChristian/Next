@@ -13,9 +13,9 @@ struct BotanicalPlantView: View {
     var body: some View {
         Canvas { context, size in
             let ink = NextTheme.botanical
-            let stem = ink.opacity(0.90)
-            let leaf = ink.opacity(0.78)
-            let seed = ink.opacity(0.58)
+            let stem = ink
+            let leaf = ink
+            let seed = ink.opacity(0.70)
 
             let origin = CGPoint(x: size.width * 0.48, y: size.height * 0.92)
             let scale = min(size.width, size.height)
@@ -129,5 +129,5 @@ struct BotanicalPlantView: View {
         }
     }
     .padding()
-    .background(Color(red: 0.98, green: 0.97, blue: 0.94))
+    .background(NextTheme.canvas)
 }

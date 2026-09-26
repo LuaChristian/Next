@@ -11,6 +11,7 @@ import SwiftUI
 struct GoalDetailView: View {
     @Query(sort: \Goal.createdAt) private var goals: [Goal]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.modelContext) private var modelContext
 
     let goalID: UUID
 
@@ -30,12 +31,7 @@ struct GoalDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         header(goal)
-
-                        if goal.tasks.isEmpty {
-                            emptyTasks
-                        } else {
-                            taskList(goal.sortedTasks)
-                        }
+                        taskSections(goal)
                     }
                 }
 
@@ -99,6 +95,23 @@ struct GoalDetailView: View {
         .accessibilityLabel(goal.progressAccessibilityLabel)
     }
 
+    @ViewBuilder
+    private func taskSections(_ goal: Goal) -> some View {
+        if goal.tasks.isEmpty {
+            emptyTasks
+        } else {
+            if goal.activeTasks.isEmpty {
+                noActiveTasks
+            } else {
+                taskList(goal.activeTasks)
+            }
+
+            if !goal.completedTasks.isEmpty {
+                completedTaskList(goal.completedTasks)
+            }
+        }
+    }
+
     private var emptyTasks: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("No tasks yet.")
@@ -108,6 +121,22 @@ struct GoalDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("Add something you can work on the next time you have a few minutes.")
+                .nextFont(17)
+                .foregroundStyle(NextTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var noActiveTasks: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("No active tasks.")
+                .nextFont(22, relativeTo: .title3)
+                .foregroundStyle(NextTheme.ink)
+                .padding(.top, 48)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Completed work stays here. Add another task when you're ready.")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -140,6 +169,56 @@ struct GoalDetailView: View {
                 .padding(.vertical, 20)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("goalTask-\(task.title)")
+
+                if task.id != tasks.last?.id {
+                    NextHairline()
+                }
+            }
+        }
+    }
+
+    private func completedTaskList(_ tasks: [GoalTask]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("COMPLETED")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.8)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 40)
+                .padding(.bottom, 8)
+                .accessibilityAddTraits(.isHeader)
+
+            ForEach(tasks) { task in
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(task.title)
+                            .nextFont(20, relativeTo: .title3)
+                            .foregroundStyle(NextTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text("\(task.durationMinutes) MIN  ·  \(task.energyRequired.title.uppercased())")
+                            .nextFont(13, weight: .medium, relativeTo: .caption)
+                            .tracking(1.2)
+                            .foregroundStyle(NextTheme.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(task.title). Completed. \(task.durationMinutes) minutes. \(task.energyRequired.title) energy."
+                    )
+                    .accessibilityIdentifier("completedTask-\(task.title)")
+
+                    Button("REOPEN") {
+                        task.reopen()
+                        try? modelContext.save()
+                    }
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
+                    .tracking(1.2)
+                    .foregroundStyle(NextTheme.secondary)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Reopen \(task.title)")
+                    .accessibilityIdentifier("reopen-\(task.title)")
+                }
+                .padding(.vertical, 20)
 
                 if task.id != tasks.last?.id {
                     NextHairline()

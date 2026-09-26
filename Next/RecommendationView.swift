@@ -16,13 +16,18 @@ struct RecommendationView: View {
     @State private var currentIndex = 0
     @State private var focusTask: TaskItem?
 
-    init(availableTime: TimeOption, energy: EnergyLevel, tasks: [TaskItem]) {
+    init(
+        availableTime: TimeOption,
+        energy: EnergyLevel,
+        tasks: [TaskItem],
+        hasAnyTasks: Bool? = nil
+    ) {
         recommendations = RecommendationEngine().recommendations(
             tasks: tasks,
             availableTime: availableTime,
             energy: energy
         )
-        hasAnyTasks = !tasks.isEmpty
+        self.hasAnyTasks = hasAnyTasks ?? !tasks.isEmpty
     }
 
     init(recommendations: [TaskItem], hasAnyTasks: Bool? = nil) {

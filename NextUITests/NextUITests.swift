@@ -549,6 +549,136 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedTaskLeavesWhatsNextAndCanBeReopened() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-lifecycle-\(UUID().uuidString).store")
+        let storeArguments = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_ONBOARDING_COMPLETED"
+        ]
+
+        let app = XCUIApplication()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        plantMCATGoalAndAminoTask(in: app)
+        addTaskOnCurrentGoal(in: app, title: "Review flashcards", duration: "15 min", energy: "Low")
+
+        app.tabBars.buttons["Home"].tap()
+        completeRecommendedSession(in: app, answer: "YES", exit: "WHAT'S NEXT? →")
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR TASKS"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["COMPLETED"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review flashcards"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["completedTask-Review amino acids"].exists)
+        XCTAssertTrue(app.buttons["Reopen Review amino acids"].exists)
+
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["TASK FINISHED"].exists || app.staticTexts["1"].exists)
+
+        app.terminate()
+        app.launchArguments = storeArguments
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.tabBars.buttons["Garden"].tap()
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["COMPLETED"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["completedTask-Review amino acids"].waitForExistence(timeout: 2))
+
+        app.buttons["Reopen Review amino acids"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
+
+        app.tabBars.buttons["Home"].tap()
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["TASK FINISHED"].exists || app.staticTexts["1"].exists)
+    }
+
+    @MainActor
+    func testNotYetLeavesTaskRecommendable() throws {
+        let app = launchSeededApp()
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["NOT YET"].tap()
+        app.buttons["I'M DONE"].tap()
+
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+
+        app.tabBars.buttons["Garden"].tap()
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
+    }
+
+    @MainActor
+    func testTaskLifecycleVisualReview() throws {
+        let review = TaskLifecycleCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_TASK_LIFECYCLE"]
+        app.launch()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR TASKS"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["COMPLETED"].exists)
+        XCTAssertTrue(app.staticTexts["Review flashcards"].exists)
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.buttons["Reopen Review amino acids"].exists)
+        review.capture(app, "01 Goal Detail active and completed")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.staticTexts["Finish book"].tap()
+        XCTAssertTrue(app.staticTexts["No active tasks."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["COMPLETED"].exists)
+        XCTAssertTrue(app.staticTexts["Read chapter"].exists)
+        review.capture(app, "02 Goal Detail only completed")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.tabBars.buttons["Home"].tap()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
+        review.capture(app, "04 Home recommendation after completion")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        app.tabBars.buttons["Garden"].tap()
+        app.staticTexts["Study for MCAT"].tap()
+        XCTAssertTrue(app.buttons["Reopen Review amino acids"].waitForExistence(timeout: 2))
+        app.buttons["Reopen Review amino acids"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
+        review.capture(app, "03 Completed-task REOPEN")
+    }
+
+    @MainActor
     func testWhitespaceGoalTitleCannotBePlanted() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
@@ -807,6 +937,45 @@ final class NextUITests: XCTestCase {
         return app
     }
 
+    private func addTaskOnCurrentGoal(
+        in app: XCUIApplication,
+        title: String,
+        duration: String,
+        energy: String
+    ) {
+        app.buttons["+ ADD TASK"].tap()
+        let taskField = app.textFields["Task title"]
+        XCTAssertTrue(taskField.waitForExistence(timeout: 2))
+        taskField.tap()
+        taskField.typeText(title)
+        app.buttons[duration].tap()
+        app.buttons[energy].tap()
+        app.buttons["ADD TASK →"].tap()
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts[title].exists
+                || app.descendants(matching: .any)["goalTask-\(title)"].exists
+        )
+    }
+
+    @MainActor
+    private func completeRecommendedSession(
+        in app: XCUIApplication,
+        answer: String,
+        exit: String
+    ) {
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons[answer].tap()
+        app.buttons[exit].tap()
+    }
+
     @MainActor
     private func navigateToFirstRecommendation(in app: XCUIApplication) {
         app.buttons["30 min"].tap()
@@ -820,6 +989,30 @@ final class NextUITests: XCTestCase {
         guard timer.waitForExistence(timeout: 2) else { return false }
         let value = timer.value as? String ?? ""
         return value.hasPrefix("\(minutes) minutes") || value.hasPrefix("\(minutes - 1) minutes")
+    }
+}
+
+private struct TaskLifecycleCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M1-Task-Lifecycle"
+    )
+
+    let test: XCTestCase
+
+    init(_ test: XCTestCase) {
+        self.test = test
+    }
+
+    func capture(_ app: XCUIApplication, _ name: String) {
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        let file = Self.directory.appendingPathComponent("\(name).png")
+        try? screenshot.pngRepresentation.write(to: file)
     }
 }
 
