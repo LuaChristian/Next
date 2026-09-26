@@ -915,6 +915,113 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testFocusSettingsKeepScreenAwakePersists() throws {
+        let suite = "next.uitest.focus-\(UUID().uuidString)"
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_DEFAULTS_SUITE", suite]
+        app.launch()
+
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Focus settings"].waitForExistence(timeout: 2))
+
+        tapFocusSettings(in: app)
+        let awake = app.switches["keepScreenAwake"]
+        XCTAssertTrue(awake.waitForExistence(timeout: 3))
+        XCTAssertEqual(awake.value as? String, "0")
+        XCTAssertFalse(app.staticTexts["REDUCE DISTRACTIONS"].exists)
+        XCTAssertFalse(app.buttons["Reduce Distractions"].exists)
+        awake.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertEqual(awake.value as? String, "1")
+        app.buttons["DONE"].tap()
+
+        app.terminate()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_DEFAULTS_SUITE", suite]
+        app.launch()
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        tapFocusSettings(in: app)
+        let restored = app.switches["keepScreenAwake"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 3))
+        XCTAssertEqual(restored.value as? String, "1")
+        XCTAssertFalse(app.staticTexts["REDUCE DISTRACTIONS"].exists)
+        XCTAssertFalse(app.buttons["Reduce Distractions"].exists)
+    }
+
+    @MainActor
+    func testFocusExperienceVisualReview() throws {
+        let review = FocusExperienceCapture(self)
+        let app = launchSeededApp()
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Focus settings"].waitForExistence(timeout: 2))
+        review.capture(app, "01 Focus screen with settings")
+
+        tapFocusSettings(in: app)
+        let awake = app.switches["keepScreenAwake"]
+        XCTAssertTrue(awake.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["REDUCE DISTRACTIONS"].exists)
+        review.capture(app, "02 Focus settings")
+        review.capture(app, "03 Keep Screen Awake OFF")
+
+        awake.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertEqual(awake.value as? String, "1")
+        review.capture(app, "04 Keep Screen Awake ON")
+        review.capture(app, "05 Focus settings after cleanup")
+    }
+
+    @MainActor
+    func testVisibleTaskManagementOverflow() throws {
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+
+        XCTAssertTrue(app.buttons["Manage Review amino acids"].waitForExistence(timeout: 2))
+        openVisibleTaskMenu("Review amino acids", in: app)
+        XCTAssertTrue(app.buttons["Edit Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Delete Review amino acids"].exists)
+        tapMenuButton("Edit Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["EDIT TASK"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        XCTAssertTrue(app.buttons["Reopen Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Manage Review flashcards"].exists)
+        openVisibleTaskMenu("Review flashcards", completed: true, in: app)
+        XCTAssertTrue(app.buttons["Edit Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Delete Review flashcards"].exists)
+        tapMenuButton("Delete Review flashcards", in: app)
+        XCTAssertTrue(app.staticTexts["Delete Task?"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
+
+        openTaskMenu("Review amino acids", in: app)
+        tapMenuButton("Edit Review amino acids", in: app)
+        XCTAssertTrue(app.staticTexts["EDIT TASK"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testTaskOverflowVisualReview() throws {
+        let review = FinalCleanupCapture(self)
+        let app = launchManagementApp()
+        openGardenGoal("Study for MCAT", in: app)
+        XCTAssertTrue(app.buttons["Manage Review amino acids"].waitForExistence(timeout: 2))
+        review.capture(app, "01 Goal Detail active Task management")
+
+        openVisibleTaskMenu("Review amino acids", in: app)
+        XCTAssertTrue(app.buttons["Edit Review amino acids"].waitForExistence(timeout: 2))
+        review.capture(app, "02 Active Task overflow menu")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)).tap()
+
+        app.swipeUp()
+        XCTAssertTrue(app.buttons["Reopen Review flashcards"].waitForExistence(timeout: 2))
+        review.capture(app, "03 Goal Detail completed Task management")
+
+        openVisibleTaskMenu("Review flashcards", completed: true, in: app)
+        XCTAssertTrue(app.buttons["Edit Review flashcards"].waitForExistence(timeout: 2))
+        review.capture(app, "04 Completed Task overflow menu")
+    }
+
+    @MainActor
     func testWhitespaceGoalTitleCannotBePlanted() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
@@ -1254,6 +1361,12 @@ final class NextUITests: XCTestCase {
         )
     }
 
+    private func tapFocusSettings(in app: XCUIApplication) {
+        let button = app.buttons["Focus settings"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 2))
+        button.tap()
+    }
+
     private func tapGoalOptions(in app: XCUIApplication) {
         let button = app.buttons["goalOptions"].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 2))
@@ -1267,6 +1380,16 @@ final class NextUITests: XCTestCase {
             app.staticTexts[title].tap()
         }
         XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+    }
+
+    private func openVisibleTaskMenu(_ title: String, completed: Bool = false, in app: XCUIApplication) {
+        let manage = app.buttons["Manage \(title)"].firstMatch
+        XCTAssertTrue(manage.waitForExistence(timeout: 2))
+        manage.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(
+            app.buttons["Edit \(title)"].waitForExistence(timeout: 2)
+                || app.menuItems["Edit \(title)"].waitForExistence(timeout: 2)
+        )
     }
 
     private func openTaskMenu(_ title: String, completed: Bool = false, in app: XCUIApplication) {
@@ -1316,6 +1439,54 @@ final class NextUITests: XCTestCase {
         }
     }
 }
+
+    private struct FinalCleanupCapture {
+        static let directory = URL(fileURLWithPath:
+            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Final-Cleanup"
+        )
+
+        let test: XCTestCase
+
+        init(_ test: XCTestCase) {
+            self.test = test
+        }
+
+        func capture(_ app: XCUIApplication, _ name: String) {
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            test.add(attachment)
+
+            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+            let file = Self.directory.appendingPathComponent("\(name).png")
+            try? screenshot.pngRepresentation.write(to: file)
+        }
+    }
+
+    private struct FocusExperienceCapture {
+        static let directory = URL(fileURLWithPath:
+            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Focus-Experience"
+        )
+
+        let test: XCTestCase
+
+        init(_ test: XCTestCase) {
+            self.test = test
+        }
+
+        func capture(_ app: XCUIApplication, _ name: String) {
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            test.add(attachment)
+
+            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+            let file = Self.directory.appendingPathComponent("\(name).png")
+            try? screenshot.pngRepresentation.write(to: file)
+        }
+    }
 
     private struct ManagementCapture {
         static let directory = URL(fileURLWithPath:

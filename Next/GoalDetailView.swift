@@ -217,21 +217,25 @@ struct GoalDetailView: View {
                 .padding(.bottom, 8)
 
             ForEach(tasks) { task in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(task.title)
-                        .nextFont(20, relativeTo: .title3)
-                        .foregroundStyle(NextTheme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(task.title)
+                            .nextFont(20, relativeTo: .title3)
+                            .foregroundStyle(NextTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(task.durationMinutes) MIN  ·  \(task.energyRequired.title.uppercased())")
-                        .nextFont(13, weight: .medium, relativeTo: .caption)
-                        .tracking(1.2)
-                        .foregroundStyle(NextTheme.secondary)
+                        Text("\(task.durationMinutes) MIN  ·  \(task.energyRequired.title.uppercased())")
+                            .nextFont(13, weight: .medium, relativeTo: .caption)
+                            .tracking(1.2)
+                            .foregroundStyle(NextTheme.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("goalTask-\(task.title)")
+
+                    taskOverflowMenu(task)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 20)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("goalTask-\(task.title)")
                 .taskManagement(task, onEdit: { editingTaskID = task.id }, onDelete: { taskPendingDeletion = task })
 
                 if task.id != tasks.last?.id {
@@ -252,7 +256,7 @@ struct GoalDetailView: View {
                 .accessibilityAddTraits(.isHeader)
 
             ForEach(tasks) { task in
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(task.title)
                             .nextFont(20, relativeTo: .title3)
@@ -281,6 +285,8 @@ struct GoalDetailView: View {
                     .frame(minHeight: 44)
                     .accessibilityLabel("Reopen \(task.title)")
                     .accessibilityIdentifier("reopen-\(task.title)")
+
+                    taskOverflowMenu(task)
                 }
                 .padding(.vertical, 20)
                 .taskManagement(task, onEdit: { editingTaskID = task.id }, onDelete: { taskPendingDeletion = task })
@@ -289,6 +295,30 @@ struct GoalDetailView: View {
                     NextHairline()
                 }
             }
+        }
+    }
+
+    private func taskOverflowMenu(_ task: GoalTask) -> some View {
+        Menu {
+            taskManagementButtons(task)
+        } label: {
+            Image(systemName: "ellipsis")
+                .foregroundStyle(NextTheme.secondary)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Manage \(task.title)")
+        .accessibilityIdentifier("manageTask-\(task.title)")
+    }
+
+    @ViewBuilder
+    private func taskManagementButtons(_ task: GoalTask) -> some View {
+        Button("Edit \(task.title)") {
+            editingTaskID = task.id
+        }
+        Button("Delete \(task.title)", role: .destructive) {
+            taskPendingDeletion = task
         }
     }
 

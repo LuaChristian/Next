@@ -20,7 +20,7 @@ struct FocusSessionTimer: Equatable {
     private var totalPaused: TimeInterval = 0
     private var pausedAt: Date?
     private var endedAt: Date?
-    private var endedNaturally = false
+    private(set) var endedNaturally = false
 
     private(set) var phase: FocusSessionPhase = .running
 
@@ -31,6 +31,14 @@ struct FocusSessionTimer: Equatable {
 
     func remaining(at now: Date) -> TimeInterval {
         max(0, duration - activeElapsed(at: now))
+    }
+
+    /// Expected natural end for a currently running session. Nil when paused, ended, or already due.
+    func expectedNaturalCompletion(at now: Date) -> Date? {
+        guard phase == .running else { return nil }
+        let leftover = remaining(at: now)
+        guard leftover > 0 else { return nil }
+        return now.addingTimeInterval(leftover)
     }
 
     func remainingSeconds(at now: Date) -> Int {

@@ -23,6 +23,7 @@ struct NextApp: App {
                 initialValue: OnboardingPreference.resolveCompleted(goalsExist: goalsExist)
             )
             NextTheme.applyChrome()
+            NextNotificationCenterDelegate.register()
         } catch {
             fatalError("Could not create persistent ModelContainer: \(error)")
         }

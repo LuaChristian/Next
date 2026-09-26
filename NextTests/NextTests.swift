@@ -8,6 +8,7 @@
 import Foundation
 import SwiftData
 import Testing
+import UserNotifications
 @testable import Next
 
 struct RecommendationEngineTests {
@@ -511,6 +512,42 @@ struct FocusSessionTimerTests {
         #expect(session.phase == .ended)
         #expect(session.activeElapsed(at: start.addingTimeInterval(9 * 60)) == 6 * 60)
         #expect(session.activeElapsed(at: start.addingTimeInterval(20 * 60)) == 6 * 60)
+    }
+
+    @Test func expectedNaturalCompletionMatchesRemainingActiveTime() {
+        let session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        #expect(session.expectedNaturalCompletion(at: start) == start.addingTimeInterval(25 * 60))
+        #expect(session.expectedNaturalCompletion(at: start.addingTimeInterval(5 * 60)) == start.addingTimeInterval(25 * 60))
+    }
+
+    @Test func expectedNaturalCompletionIsNilWhilePausedOrEnded() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        session.pause(at: start.addingTimeInterval(5 * 60))
+        #expect(session.expectedNaturalCompletion(at: start.addingTimeInterval(8 * 60)) == nil)
+
+        session.resume(at: start.addingTimeInterval(10 * 60))
+        #expect(session.expectedNaturalCompletion(at: start.addingTimeInterval(10 * 60)) == start.addingTimeInterval(30 * 60))
+
+        session.finish(at: start.addingTimeInterval(12 * 60))
+        #expect(session.expectedNaturalCompletion(at: start.addingTimeInterval(12 * 60)) == nil)
+    }
+
+    @Test func backgroundRunningTimeStillCounts() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let afterBackground = start.addingTimeInterval(8 * 60)
+        session.evaluateCompletion(at: afterBackground)
+        #expect(session.phase == .running)
+        #expect(session.activeElapsed(at: afterBackground) == 8 * 60)
+    }
+
+    @Test func backgroundPausedTimeStillDoesNotCount() {
+        var session = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        session.pause(at: start.addingTimeInterval(3 * 60))
+        let later = start.addingTimeInterval(20 * 60)
+        session.evaluateCompletion(at: later)
+        #expect(session.phase == .paused)
+        #expect(session.activeElapsed(at: later) == 3 * 60)
+        #expect(session.expectedNaturalCompletion(at: later) == nil)
     }
 }
 
@@ -2186,6 +2223,209 @@ struct GoalTaskManagementTests {
         #expect(sessions.first?.goalTitleSnapshot == "Study for MCAT")
         #expect(sessions.first?.historyTaskTitle == "Review amino acids")
         #expect(sessions.first?.taskWasFinished == true)
+    }
+}
+
+@MainActor
+final class MockFocusNotificationScheduler: FocusNotificationScheduling {
+    var status: UNAuthorizationStatus = .authorized
+    var grantOnRequest = true
+    private(set) var scheduled: [FocusCompletionNotification] = []
+    private(set) var cancelCount = 0
+    private(set) var requestCount = 0
+
+    func authorizationStatus() async -> UNAuthorizationStatus { status }
+
+    func requestAuthorization() async -> Bool {
+        requestCount += 1
+        if grantOnRequest { status = .authorized }
+        return grantOnRequest
+    }
+
+    func schedule(_ notification: FocusCompletionNotification) async {
+        scheduled = [notification]
+    }
+
+    func cancelCompletionNotification() {
+        scheduled = []
+        cancelCount += 1
+    }
+}
+
+struct FocusExperienceTests {
+    private let start = Date(timeIntervalSince1970: 1_700_000_000)
+    private let amino = TaskItem(
+        title: "Review amino acids",
+        durationMinutes: 25,
+        energyRequired: .good,
+        area: "Education",
+        goal: "Study for MCAT"
+    )
+
+    @MainActor
+    private func coordinator(
+        status: UNAuthorizationStatus = .authorized,
+        skipPrompt: Bool = true
+    ) -> (FocusNotificationCoordinator, MockFocusNotificationScheduler) {
+        let scheduler = MockFocusNotificationScheduler()
+        scheduler.status = status
+        return (FocusNotificationCoordinator(scheduler: scheduler, skipsSystemPrompt: skipPrompt), scheduler)
+    }
+
+    @MainActor
+    @Test func runningSessionSchedulesOneCompletionNotificationWhenAuthorized() async {
+        let (coordinator, scheduler) = coordinator()
+        let timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+
+        #expect(scheduler.scheduled.count == 1)
+        #expect(scheduler.scheduled.first?.taskTitle == "Review amino acids")
+        #expect(scheduler.scheduled.first?.fireDate == start.addingTimeInterval(25 * 60))
+        #expect(scheduler.scheduled.first?.title == "Focus complete")
+        #expect(scheduler.scheduled.first?.body == "You finished your focus session for Review amino acids.")
+    }
+
+    @MainActor
+    @Test func pauseCancelsPendingNotification() async {
+        let (coordinator, scheduler) = coordinator()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        timer.pause(at: start.addingTimeInterval(5 * 60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(5 * 60))
+
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.cancelCount >= 1)
+        #expect(coordinator.scheduled == nil)
+    }
+
+    @MainActor
+    @Test func resumeSchedulesNotificationFromRemainingTime() async {
+        let (coordinator, scheduler) = coordinator()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.pause(at: start.addingTimeInterval(5 * 60))
+        timer.resume(at: start.addingTimeInterval(10 * 60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(10 * 60))
+
+        #expect(scheduler.scheduled.count == 1)
+        #expect(scheduler.scheduled.first?.fireDate == start.addingTimeInterval(30 * 60))
+    }
+
+    @MainActor
+    @Test func finishEarlyCancelsPendingNotification() async {
+        let (coordinator, scheduler) = coordinator()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        timer.finish(at: start.addingTimeInterval(2 * 60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(2 * 60))
+
+        #expect(timer.phase == .ended)
+        #expect(timer.endedNaturally == false)
+        #expect(scheduler.scheduled.isEmpty)
+    }
+
+    @MainActor
+    @Test func naturalCompletionDoesNotRescheduleNotification() async {
+        let (coordinator, scheduler) = coordinator()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(25 * 60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(25 * 60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(26 * 60))
+
+        #expect(timer.endedNaturally)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduled.count != 2)
+    }
+
+    @MainActor
+    @Test func deniedPermissionDoesNotPreventFocus() async {
+        let (coordinator, scheduler) = coordinator(status: .denied)
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(3 * 60))
+
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.requestCount == 0)
+        #expect(timer.phase == .running)
+        #expect(timer.remainingSeconds(at: start.addingTimeInterval(3 * 60)) == 22 * 60)
+    }
+
+    @MainActor
+    @Test func notDeterminedPermissionDoesNotCorruptTimer() async {
+        let scheduler = MockFocusNotificationScheduler()
+        scheduler.status = .notDetermined
+        scheduler.grantOnRequest = false
+        let coordinator = FocusNotificationCoordinator(scheduler: scheduler, skipsSystemPrompt: false)
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+
+        #expect(scheduler.requestCount == 1)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(timer.phase == .running)
+        #expect(timer.remainingSeconds(at: start) == 25 * 60)
+    }
+
+    @Test func foregroundCompletionNotificationIsSuppressed() {
+        #expect(FocusNotificationPresentation.options(for: FocusCompletionNotification.identifier).isEmpty)
+        #expect(!FocusNotificationPresentation.options(for: "other.notification").isEmpty)
+    }
+
+    @Test func keepScreenAwakeDefaultsOffAndPersists() {
+        let defaults = UserDefaults(suiteName: "next.focus-experience-\(UUID().uuidString)")!
+        defaults.removePersistentDomain(forName: defaults.dictionaryRepresentation().keys.first ?? "")
+        #expect(FocusPreference.keepScreenAwake(in: defaults) == false)
+
+        FocusPreference.setKeepScreenAwake(true, in: defaults)
+        #expect(FocusPreference.keepScreenAwake(in: defaults) == true)
+        FocusPreference.setKeepScreenAwake(false, in: defaults)
+        #expect(FocusPreference.keepScreenAwake(in: defaults) == false)
+    }
+
+    @Test func idleTimerOnlyDisablesForRunningForegroundPreference() {
+        #expect(
+            FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .running, sceneActive: true)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .paused, sceneActive: true)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .ended, sceneActive: true)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .running, sceneActive: false)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: false, phase: .running, sceneActive: true)
+        )
+    }
+
+    @MainActor
+    @Test func preferenceChangeDoesNotMutateDomainData() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal))
+        try context.save()
+
+        let defaults = UserDefaults(suiteName: "next.focus-pref-\(UUID().uuidString)")!
+        FocusPreference.setKeepScreenAwake(true, in: defaults)
+
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.title == "Study for MCAT")
+    }
+
+    @Test func recommendationEngineRemainsUnaffectedByFocusPreference() {
+        let defaults = UserDefaults(suiteName: "next.focus-rank-\(UUID().uuidString)")!
+        FocusPreference.setKeepScreenAwake(true, in: defaults)
+        let engine = RecommendationEngine()
+        let tasks = [
+            TaskItem(title: "A", durationMinutes: 20, energyRequired: .good, area: "Education", goal: "MCAT", goalPriority: .high),
+            TaskItem(title: "B", durationMinutes: 30, energyRequired: .good, area: "Career", goal: "Portfolio"),
+            TaskItem(title: "C", durationMinutes: 30, energyRequired: .good, area: "Fitness", goal: "Fitness", goalPriority: .high, lastFocusedAt: Date())
+        ]
+        #expect(engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good).map(\.title) == ["A", "C", "B"])
     }
 }
 
