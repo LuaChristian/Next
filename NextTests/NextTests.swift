@@ -7,7 +7,9 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 import Testing
+import UIKit
 import UserNotifications
 @testable import Next
 
@@ -2435,6 +2437,93 @@ struct FocusExperienceTests {
             TaskItem(title: "C", durationMinutes: 30, energyRequired: .good, area: "Fitness", goal: "Fitness", goalPriority: .high, lastFocusedAt: Date())
         ]
         #expect(engine.recommendations(tasks: tasks, availableTime: .thirty, energy: .good).map(\.title) == ["A", "C", "B"])
+    }
+}
+
+struct AppearancePreferenceTests {
+    @Test func defaultAndUnknownFallBackToSystem() {
+        #expect(AppearancePreference.resolve(stored: nil) == .system)
+        #expect(AppearancePreference.resolve(stored: "") == .system)
+        #expect(AppearancePreference.resolve(stored: "lavender") == .system)
+        #expect(AppearancePreference.resolve(stored: "system") == .system)
+        #expect(AppearancePreference.resolve(stored: "light") == .light)
+        #expect(AppearancePreference.resolve(stored: "dark") == .dark)
+    }
+
+    @Test func preferredColorSchemeMapping() {
+        #expect(AppearancePreference.system.preferredColorScheme == nil)
+        #expect(AppearancePreference.light.preferredColorScheme == .light)
+        #expect(AppearancePreference.dark.preferredColorScheme == .dark)
+    }
+
+    @Test func preferencePersistsInUserDefaults() {
+        let defaults = UserDefaults(suiteName: "next.appearance-\(UUID().uuidString)")!
+        defaults.removeObject(forKey: AppearancePreference.key)
+        #expect(AppearancePreference.current(in: defaults) == .system)
+
+        AppearancePreference.set(.light, in: defaults)
+        #expect(AppearancePreference.current(in: defaults) == .light)
+        AppearancePreference.set(.dark, in: defaults)
+        #expect(AppearancePreference.current(in: defaults) == .dark)
+        AppearancePreference.set(.system, in: defaults)
+        #expect(AppearancePreference.current(in: defaults) == .system)
+    }
+
+    @Test func launchOverrideSeedsStandardKey() {
+        let defaults = UserDefaults(suiteName: "next.appearance-launch-\(UUID().uuidString)")!
+        defaults.removeObject(forKey: AppearancePreference.key)
+        AppearancePreference.applyLaunchOverrides(
+            arguments: ["UITEST_APPEARANCE", "dark"],
+            defaults: defaults
+        )
+        #expect(AppearancePreference.current(in: defaults) == .dark)
+        AppearancePreference.applyLaunchOverrides(
+            arguments: ["UITEST_APPEARANCE", "bogus"],
+            defaults: defaults
+        )
+        #expect(AppearancePreference.current(in: defaults) == .system)
+    }
+
+    @MainActor
+    @Test func appearancePreferenceDoesNotTouchSwiftData() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal))
+        try context.save()
+
+        let defaults = UserDefaults(suiteName: "next.appearance-domain-\(UUID().uuidString)")!
+        AppearancePreference.set(.dark, in: defaults)
+
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.plantVariantRaw == "broadLeaf")
+    }
+
+    @Test func lightAndDarkTextMeetWCAGAAAgainstCanvas() {
+        func luminance(_ color: UIColor) -> CGFloat {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            color.getRed(&r, green: &g, blue: &b, alpha: &a)
+            func channel(_ c: CGFloat) -> CGFloat {
+                c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+        }
+        func contrast(_ a: UIColor, _ b: UIColor) -> CGFloat {
+            let l1 = luminance(a)
+            let l2 = luminance(b)
+            let lighter = max(l1, l2)
+            let darker = min(l1, l2)
+            return (lighter + 0.05) / (darker + 0.05)
+        }
+
+        #expect(contrast(NextTheme.Palette.lightPrimary, NextTheme.Palette.lightCanvas) >= 4.5)
+        #expect(contrast(NextTheme.Palette.lightSecondary, NextTheme.Palette.lightCanvas) >= 4.5)
+        #expect(contrast(NextTheme.Palette.darkPrimary, NextTheme.Palette.darkCanvas) >= 4.5)
+        #expect(contrast(NextTheme.Palette.darkSecondary, NextTheme.Palette.darkCanvas) >= 4.5)
+        #expect(contrast(NextTheme.Palette.lightBotanical, NextTheme.Palette.lightCanvas) >= 3.0)
+        #expect(contrast(NextTheme.Palette.darkBotanical, NextTheme.Palette.darkCanvas) >= 3.0)
     }
 }
 

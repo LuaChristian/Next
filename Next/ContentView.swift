@@ -32,7 +32,7 @@ struct ContentView: View {
                 Label("History", systemImage: "clock")
             }
         }
-        .tint(NextTheme.botanical)
+        .tint(NextTheme.botanicalAccent)
         .toolbarBackground(NextTheme.canvas, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
     }

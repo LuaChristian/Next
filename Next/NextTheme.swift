@@ -2,41 +2,64 @@
 //  NextTheme.swift
 //  Next
 //
-//  Lightweight shared tokens for V1 consistency and contrast.
+//  Appearance-aware semantic tokens.
+//  Light = Calm Garden. Dark = Twilight Quiet — Botanical Green.
 //
 
 import SwiftUI
+import UIKit
 
 enum NextTheme {
-    /// Ivory canvas. #FAF7F0
-    static let canvas = Color(red: 250 / 255, green: 247 / 255, blue: 240 / 255)
+    // MARK: - Semantic tokens (adaptive)
 
-    /// Near-black warm ink. #1A1A17
-    static let ink = Color(red: 26 / 255, green: 26 / 255, blue: 23 / 255)
+    /// Page background. Light ivory / dark warm charcoal.
+    static let canvas = Color(uiColor: Palette.canvas)
 
-    /// Supporting copy. #615E57
-    static let secondary = Color(red: 97 / 255, green: 94 / 255, blue: 87 / 255)
+    /// Slightly elevated surface (sheets, grouped areas).
+    static let surface = Color(uiColor: Palette.surface)
 
-    /// Signature accent, aligned to the leaf-arrow icon. #405743
-    static let botanical = Color(red: 64 / 255, green: 87 / 255, blue: 67 / 255)
+    /// Primary copy.
+    static let primaryText = Color(uiColor: Palette.primaryText)
 
-    /// Disabled / unselected chrome. #857F75
-    static let disabled = Color(red: 133 / 255, green: 127 / 255, blue: 117 / 255)
+    /// Supporting copy.
+    static let secondaryText = Color(uiColor: Palette.secondaryText)
 
-    /// Warm hairline that sits on ivory without going cool gray.
-    static let rule = Color(red: 115 / 255, green: 105 / 255, blue: 90 / 255).opacity(0.22)
+    /// Signature botanical accent (controls, selection, tint).
+    static let botanicalAccent = Color(uiColor: Palette.botanicalAccent)
+
+    /// Softer botanical ink for plant line art.
+    static let botanicalInk = Color(uiColor: Palette.botanicalInk)
+
+    /// Hairlines and separators.
+    static let separator = Color(uiColor: Palette.separator)
+
+    /// Disabled / unselected chrome.
+    static let disabledText = Color(uiColor: Palette.disabledText)
+
+    /// Destructive actions (delete).
+    static let destructive = Color(uiColor: Palette.destructive)
+
+    // MARK: - Compatibility aliases (existing call sites)
+
+    static let ink = primaryText
+    static let secondary = secondaryText
+    static let botanical = botanicalAccent
+    static let disabled = disabledText
+    static let rule = separator
 
     static let pagePadding: CGFloat = 28
 
+    /// Apply once at launch. Uses dynamic UIColors so chrome tracks appearance.
     static func applyChrome() {
-        let selected = UIColor(botanical)
-        let muted = UIColor(disabled)
-        let ivory = UIColor(canvas)
+        let selected = Palette.botanicalAccent
+        let muted = Palette.disabledText
+        let background = Palette.canvas
+        let shadow = Palette.separator
 
         let tab = UITabBarAppearance()
         tab.configureWithOpaqueBackground()
-        tab.backgroundColor = ivory
-        tab.shadowColor = UIColor(rule)
+        tab.backgroundColor = background
+        tab.shadowColor = shadow
         for layout in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
             layout.normal.iconColor = muted
             layout.normal.titleTextAttributes = [.foregroundColor: muted]
@@ -51,6 +74,49 @@ enum NextTheme {
         UINavigationBar.appearance().tintColor = selected
         UITextField.appearance().tintColor = selected
     }
+
+    // MARK: - Palette
+
+    enum Palette {
+        /// Calm Garden — Light
+        static let lightCanvas = UIColor(red: 250 / 255, green: 247 / 255, blue: 240 / 255, alpha: 1)
+        static let lightSurface = UIColor(red: 250 / 255, green: 247 / 255, blue: 240 / 255, alpha: 1)
+        static let lightPrimary = UIColor(red: 26 / 255, green: 26 / 255, blue: 23 / 255, alpha: 1)
+        static let lightSecondary = UIColor(red: 97 / 255, green: 94 / 255, blue: 87 / 255, alpha: 1)
+        /// Existing V1 botanical (#405743), preserved.
+        static let lightBotanical = UIColor(red: 64 / 255, green: 87 / 255, blue: 67 / 255, alpha: 1)
+        static let lightBotanicalInk = UIColor(red: 64 / 255, green: 87 / 255, blue: 67 / 255, alpha: 1)
+        static let lightDisabled = UIColor(red: 133 / 255, green: 127 / 255, blue: 117 / 255, alpha: 1)
+        static let lightSeparator = UIColor(red: 115 / 255, green: 105 / 255, blue: 90 / 255, alpha: 0.22)
+        static let lightDestructive = UIColor(red: 0.55, green: 0.18, blue: 0.16, alpha: 1)
+
+        /// Twilight Quiet — Dark
+        static let darkCanvas = UIColor(red: 23 / 255, green: 31 / 255, blue: 27 / 255, alpha: 1)       // #171F1B
+        static let darkSurface = UIColor(red: 34 / 255, green: 44 / 255, blue: 37 / 255, alpha: 1)      // #222C25
+        static let darkPrimary = UIColor(red: 242 / 255, green: 240 / 255, blue: 232 / 255, alpha: 1)   // #F2F0E8
+        static let darkSecondary = UIColor(red: 179 / 255, green: 190 / 255, blue: 179 / 255, alpha: 1) // #B3BEB3
+        static let darkBotanical = UIColor(red: 180 / 255, green: 204 / 255, blue: 179 / 255, alpha: 1)  // #B4CCB3
+        static let darkBotanicalInk = UIColor(red: 142 / 255, green: 173 / 255, blue: 145 / 255, alpha: 1) // #8EAD91
+        static let darkDisabled = UIColor(red: 135 / 255, green: 148 / 255, blue: 137 / 255, alpha: 1)  // #879489
+        static let darkSeparator = UIColor(red: 58 / 255, green: 73 / 255, blue: 62 / 255, alpha: 1)    // #3A493E
+        static let darkDestructive = UIColor(red: 0.90, green: 0.55, blue: 0.50, alpha: 1)
+
+        static let canvas = adaptive(light: lightCanvas, dark: darkCanvas)
+        static let surface = adaptive(light: lightSurface, dark: darkSurface)
+        static let primaryText = adaptive(light: lightPrimary, dark: darkPrimary)
+        static let secondaryText = adaptive(light: lightSecondary, dark: darkSecondary)
+        static let botanicalAccent = adaptive(light: lightBotanical, dark: darkBotanical)
+        static let botanicalInk = adaptive(light: lightBotanicalInk, dark: darkBotanicalInk)
+        static let disabledText = adaptive(light: lightDisabled, dark: darkDisabled)
+        static let separator = adaptive(light: lightSeparator, dark: darkSeparator)
+        static let destructive = adaptive(light: lightDestructive, dark: darkDestructive)
+
+        static func adaptive(light: UIColor, dark: UIColor) -> UIColor {
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark ? dark : light
+            }
+        }
+    }
 }
 
 enum NextInput {
@@ -63,7 +129,7 @@ enum NextInput {
 struct NextHairline: View {
     var body: some View {
         Rectangle()
-            .fill(NextTheme.rule)
+            .fill(NextTheme.separator)
             .frame(height: 0.5)
             .accessibilityHidden(true)
     }
@@ -81,7 +147,7 @@ struct NextPrimaryAction: View {
             Button(title, action: action)
                 .nextFont(13, weight: .semibold)
                 .tracking(2.2)
-                .foregroundStyle(isEnabled ? NextTheme.botanical : NextTheme.disabled)
+                .foregroundStyle(isEnabled ? NextTheme.botanicalAccent : NextTheme.disabledText)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(!isEnabled)
 

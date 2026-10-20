@@ -12,6 +12,7 @@ import SwiftUI
 struct NextApp: App {
     let container: ModelContainer
     @State private var hasCompletedOnboarding: Bool
+    @AppStorage(AppearancePreference.key) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
         do {
@@ -22,11 +23,16 @@ struct NextApp: App {
             _hasCompletedOnboarding = State(
                 initialValue: OnboardingPreference.resolveCompleted(goalsExist: goalsExist)
             )
+            AppearancePreference.applyLaunchOverrides()
             NextTheme.applyChrome()
             NextNotificationCenterDelegate.register()
         } catch {
             fatalError("Could not create persistent ModelContainer: \(error)")
         }
+    }
+
+    private var appearance: AppearancePreference {
+        AppearancePreference.resolve(stored: appearanceRaw)
     }
 
     var body: some Scene {
@@ -42,8 +48,9 @@ struct NextApp: App {
                     }
                 }
             }
-            .preferredColorScheme(.light)
-            .tint(NextTheme.botanical)
+            .preferredColorScheme(appearance.preferredColorScheme)
+            .tint(NextTheme.botanicalAccent)
+            .background(NextTheme.canvas.ignoresSafeArea())
         }
         .modelContainer(container)
     }

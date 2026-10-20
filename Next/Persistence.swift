@@ -148,40 +148,52 @@ enum NextPersistence {
 
         let next = Goal(title: "Build Next", area: .creative, priority: .normal, plantVariant: .narrowLeaf)
         context.insert(next)
-        context.insert(GoalTask(title: "Sketch the garden", durationMinutes: 30, energyRequired: .good, goal: next))
+        let sketch = GoalTask(title: "Sketch the garden", durationMinutes: 30, energyRequired: .good, goal: next)
+        context.insert(sketch)
         context.insert(
             FocusSession(
                 plannedDurationSeconds: 120 * 60,
                 focusedDurationSeconds: 120 * 60,
                 endedNaturally: true,
                 taskWasFinished: false,
-                goal: next
+                taskTitleSnapshot: sketch.title,
+                goalTitleSnapshot: next.title,
+                goal: next,
+                task: sketch
             )
         )
 
         let interview = Goal(title: "Interview preparation", area: .career, priority: .normal, plantVariant: .branching)
         context.insert(interview)
-        context.insert(GoalTask(title: "Practice arrays", durationMinutes: 45, energyRequired: .ready, goal: interview))
+        let arrays = GoalTask(title: "Practice arrays", durationMinutes: 45, energyRequired: .ready, goal: interview)
+        context.insert(arrays)
         context.insert(
             FocusSession(
                 plannedDurationSeconds: 300 * 60,
                 focusedDurationSeconds: 300 * 60,
                 endedNaturally: true,
                 taskWasFinished: false,
-                goal: interview
+                taskTitleSnapshot: arrays.title,
+                goalTitleSnapshot: interview.title,
+                goal: interview,
+                task: arrays
             )
         )
 
         let book = Goal(title: "Finish book", area: .education, priority: .normal, plantVariant: .roundedLeaf)
         context.insert(book)
-        context.insert(GoalTask(title: "Read chapter", durationMinutes: 20, energyRequired: .low, goal: book))
+        let chapter = GoalTask(title: "Read chapter", durationMinutes: 20, energyRequired: .low, goal: book)
+        context.insert(chapter)
         context.insert(
             FocusSession(
                 plannedDurationSeconds: 600 * 60,
                 focusedDurationSeconds: 600 * 60,
                 endedNaturally: true,
                 taskWasFinished: false,
-                goal: book
+                taskTitleSnapshot: chapter.title,
+                goalTitleSnapshot: book.title,
+                goal: book,
+                task: chapter
             )
         )
 

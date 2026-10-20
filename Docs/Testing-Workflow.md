@@ -39,6 +39,8 @@ scripts/test-ui-full.sh
 UITEST_WRITE_REVIEW_SHOTS=1 scripts/test-ui.sh NextUITests/NextUITests/testGardenEvolutionVisualReview
 ```
 
+(`UITEST_WRITE_REVIEW_SHOTS=1` becomes `TEST_RUNNER_UITEST_WRITE_REVIEW_SHOTS=1` for the XCTest host.)
+
 ## Screenshot policy
 
 Visual review tests always attach `XCTAttachment`s to the result bundle.

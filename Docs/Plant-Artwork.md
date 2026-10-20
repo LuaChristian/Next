@@ -34,10 +34,26 @@ There are **20** images in a full set (4 variants × 5 stages).
 
 ## Rules
 
-- Do **not** bake the cream canvas into the file; keep alpha transparent.
-- Do **not** expect automatic tinting; supply light/dark artwork as needed.
+- Do **not** bake the cream or charcoal canvas into the file; keep alpha transparent.
+- Do **not** expect automatic tinting of full-color artwork; Next draws assets as authored.
 - Do **not** change `Goal.plantVariantRaw`, growth thresholds, or FocusSession logic.
 - Accessibility labels stay on parent Goal rows / comparison cells, not on the plant image.
+
+## Light and Dark
+
+Canvas fallback plants use `NextTheme.botanicalInk`, which adapts automatically
+(Calm Garden ink in Light, softer botanical green in Dark).
+
+For custom images:
+
+1. Prefer transparent PNGs/PDFs that read on both warm ivory (`#FAF7F0`) and
+   warm charcoal (`#171F1B`).
+2. When a single asset cannot work in both themes, add a **Dark Appearance**
+   variant in the same Image Set (Xcode asset catalog). Keep the same name —
+   no second naming scheme.
+3. Avoid bright rectangular backgrounds, neon greens, or lavender accents.
+4. Do not supply 40 placeholder files; add only authored artwork.
+5. Full-color illustrations are never template-tinted.
 
 ## Code switch point
 

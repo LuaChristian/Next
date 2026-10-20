@@ -1412,6 +1412,296 @@ final class NextUITests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testAppearancePreferencePersistsAcrossRelaunch() throws {
+        let first = XCUIApplication()
+        first.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "system"]
+        first.launch()
+        XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        first.buttons["appearanceButton"].tap()
+        let systemOption = first.descendants(matching: .any)["appearance-system"]
+        XCTAssertTrue(systemOption.waitForExistence(timeout: 2))
+        XCTAssertEqual(systemOption.value as? String, "Selected")
+        first.descendants(matching: .any)["appearance-dark"].tap()
+        XCTAssertEqual(first.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
+        first.buttons["DONE"].tap()
+        XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        first.terminate()
+
+        let second = XCUIApplication()
+        second.launchArguments = ["UITEST_SEED_GARDEN"]
+        second.launch()
+        XCTAssertTrue(second.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        second.buttons["appearanceButton"].tap()
+        let darkOption = second.descendants(matching: .any)["appearance-dark"]
+        XCTAssertTrue(darkOption.waitForExistence(timeout: 2))
+        XCTAssertEqual(darkOption.value as? String, "Selected")
+        second.descendants(matching: .any)["appearance-system"].tap()
+        second.buttons["DONE"].tap()
+    }
+
+    @MainActor
+    func testForcedLightAndDarkOverridesSurviveSystemStyle() throws {
+        XCUIDevice.shared.appearance = .dark
+        let light = XCUIApplication()
+        light.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "light"]
+        light.launch()
+        XCTAssertTrue(light.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        light.buttons["appearanceButton"].tap()
+        let lightOption = light.descendants(matching: .any)["appearance-light"]
+        XCTAssertTrue(lightOption.waitForExistence(timeout: 2))
+        XCTAssertEqual(lightOption.value as? String, "Selected")
+        light.buttons["DONE"].tap()
+        light.terminate()
+
+        XCUIDevice.shared.appearance = .light
+        let dark = XCUIApplication()
+        dark.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "dark"]
+        dark.launch()
+        XCTAssertTrue(dark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        dark.buttons["appearanceButton"].tap()
+        let darkOption = dark.descendants(matching: .any)["appearance-dark"]
+        XCTAssertTrue(darkOption.waitForExistence(timeout: 2))
+        XCTAssertEqual(darkOption.value as? String, "Selected")
+        dark.buttons["DONE"].tap()
+        dark.terminate()
+
+        XCUIDevice.shared.appearance = .light
+    }
+
+    @MainActor
+    func testDynamicAppearanceVisualReview() throws {
+        let review = AppearanceCapture(self)
+
+        func launchSeeded(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", appearance] + extra
+            app.launch()
+            return app
+        }
+
+        let homeLight = launchSeeded("light")
+        XCTAssertTrue(homeLight.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        review.capture(homeLight, "01 Home — Light")
+        homeLight.buttons["appearanceButton"].tap()
+        XCTAssertTrue(homeLight.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
+        review.capture(homeLight, "15 Appearance setting — Light")
+        homeLight.buttons["DONE"].tap()
+        homeLight.buttons["30 min"].tap()
+        homeLight.buttons["Good"].tap()
+        homeLight.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(homeLight.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        review.capture(homeLight, "03 Recommendation — Light")
+        homeLight.buttons["START SESSION →"].tap()
+        XCTAssertTrue(homeLight.buttons["Finish early"].waitForExistence(timeout: 2))
+        review.capture(homeLight, "05 Focus — Light")
+        homeLight.buttons["Finish early"].tap()
+        XCTAssertTrue(homeLight.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        homeLight.buttons["YES"].tap()
+        review.capture(homeLight, "07 Completion — Light")
+        homeLight.terminate()
+
+        let gardenLight = launchSeeded("light")
+        gardenLight.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(gardenLight.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(gardenLight, "09 Garden — Light")
+        openGardenGoal("Study for MCAT", in: gardenLight)
+        XCTAssertTrue(gardenLight.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        review.capture(gardenLight, "11 Goal Detail — Light")
+        gardenLight.navigationBars.buttons.element(boundBy: 0).tap()
+        gardenLight.tabBars.buttons["History"].tap()
+        XCTAssertTrue(gardenLight.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        review.capture(gardenLight, "13 History — Light")
+        gardenLight.terminate()
+
+        let homeDark = launchSeeded("dark")
+        XCTAssertTrue(homeDark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        review.capture(homeDark, "02 Home — Dark")
+        homeDark.buttons["appearanceButton"].tap()
+        XCTAssertTrue(homeDark.descendants(matching: .any)["appearance-dark"].waitForExistence(timeout: 2))
+        review.capture(homeDark, "16 Appearance setting — Dark")
+        homeDark.buttons["DONE"].tap()
+        homeDark.buttons["30 min"].tap()
+        homeDark.buttons["Good"].tap()
+        homeDark.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(homeDark.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        review.capture(homeDark, "04 Recommendation — Dark")
+        homeDark.buttons["START SESSION →"].tap()
+        XCTAssertTrue(homeDark.buttons["Finish early"].waitForExistence(timeout: 2))
+        review.capture(homeDark, "06 Focus — Dark")
+        homeDark.buttons["Finish early"].tap()
+        XCTAssertTrue(homeDark.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        homeDark.buttons["YES"].tap()
+        review.capture(homeDark, "08 Completion — Dark")
+        homeDark.terminate()
+
+        let gardenDark = launchSeeded("dark")
+        gardenDark.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(gardenDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(gardenDark, "10 Garden — Dark")
+        openGardenGoal("Finish book", in: gardenDark)
+        XCTAssertTrue(gardenDark.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        review.capture(gardenDark, "12 Goal Detail — Dark")
+        gardenDark.buttons["+ ADD TASK"].tap()
+        XCTAssertTrue(gardenDark.textFields["Task title"].waitForExistence(timeout: 2))
+        review.capture(gardenDark, "17 Form — Dark")
+        gardenDark.swipeDown()
+        gardenDark.tabBars.buttons["History"].tap()
+        XCTAssertTrue(gardenDark.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        review.capture(gardenDark, "14 History — Dark")
+        gardenDark.terminate()
+
+        let onboarding = XCUIApplication()
+        onboarding.launchArguments = [
+            "UITEST_IN_MEMORY",
+            "UITEST_FRESH_ONBOARDING",
+            "UITEST_APPEARANCE",
+            "dark",
+            "UITEST_DEFAULTS_SUITE",
+            "next.uitest.appearance.\(UUID().uuidString)"
+        ]
+        onboarding.launch()
+        XCTAssertTrue(onboarding.buttons["GET STARTED →"].waitForExistence(timeout: 2))
+        review.capture(onboarding, "18 Onboarding — Dark")
+        onboarding.terminate()
+
+        let largeDark = launchSeeded("dark", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        largeDark.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(largeDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(largeDark, "19 Garden large Dynamic Type — Dark")
+        openGardenGoal("Study for MCAT", in: largeDark)
+        XCTAssertTrue(largeDark.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        review.capture(largeDark, "20 Goal Detail large Dynamic Type — Dark")
+        largeDark.terminate()
+
+        XCUIDevice.shared.appearance = .light
+        let systemLight = launchSeeded("system")
+        XCTAssertTrue(systemLight.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        review.capture(systemLight, "21a System preference — device Light")
+        systemLight.terminate()
+
+        XCUIDevice.shared.appearance = .dark
+        let systemDark = launchSeeded("system")
+        XCTAssertTrue(systemDark.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        review.capture(systemDark, "21b System preference — device Dark")
+        review.capture(systemDark, "21 System appearance switching demonstration")
+        systemDark.terminate()
+        XCUIDevice.shared.appearance = .light
+    }
+
+    /// Final M6 PM checks only: History titles, large DT Dark, selection contrast Dark.
+    @MainActor
+    func testM6FinalVisualChecks() throws {
+        let review = AppearanceCapture(self)
+
+        // 1. History titles — Light / Dark (garden-evolution seed now includes snapshots)
+        let historyLight = XCUIApplication()
+        historyLight.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "light"]
+        historyLight.launch()
+        historyLight.tabBars.buttons["History"].tap()
+        XCTAssertTrue(historyLight.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        XCTAssertTrue(historyLight.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
+        XCTAssertTrue(historyLight.staticTexts["Practice arrays"].exists)
+        XCTAssertTrue(historyLight.staticTexts["Read chapter"].exists)
+        XCTAssertFalse(historyLight.staticTexts["Untitled"].exists)
+        review.capture(historyLight, "22 History titles — Light")
+        historyLight.terminate()
+
+        let historyDark = XCUIApplication()
+        historyDark.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "dark"]
+        historyDark.launch()
+        historyDark.tabBars.buttons["History"].tap()
+        XCTAssertTrue(historyDark.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
+        XCTAssertFalse(historyDark.staticTexts["Untitled"].exists)
+        review.capture(historyDark, "23 History titles — Dark")
+
+        // Snapshot survives task rename + delete
+        historyDark.tabBars.buttons["Garden"].tap()
+        openGardenGoal("Build Next", in: historyDark)
+        openVisibleTaskMenu("Sketch the garden", in: historyDark)
+        tapMenuButton("Edit Sketch the garden", in: historyDark)
+        let field = historyDark.textFields["Task title"]
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
+        replaceText(in: field, with: "Renamed sketch")
+        historyDark.buttons["SAVE TASK →"].tap()
+        openVisibleTaskMenu("Renamed sketch", in: historyDark)
+        tapMenuButton("Delete Renamed sketch", in: historyDark)
+        if historyDark.buttons["Delete Task"].waitForExistence(timeout: 2) {
+            historyDark.buttons["Delete Task"].tap()
+        }
+        historyDark.tabBars.buttons["History"].tap()
+        XCTAssertTrue(historyDark.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
+        XCTAssertFalse(historyDark.staticTexts["Renamed sketch"].exists)
+        review.capture(historyDark, "24 History titles after rename and delete — Dark")
+        historyDark.terminate()
+
+        // 2. Large Dynamic Type — Dark
+        let large = XCUIApplication()
+        large.launchArguments = [
+            "UITEST_SEED_GARDEN_EVOLUTION",
+            "UITEST_APPEARANCE",
+            "dark",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        large.launch()
+        large.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(large.staticTexts["GARDEN"].waitForExistence(timeout: 3))
+        review.capture(large, "25 Garden large Dynamic Type — Dark")
+        reveal(gardenRow("Interview preparation", in: large), in: large)
+        review.capture(large, "26 Garden large Dynamic Type scrolled — Dark")
+        reveal(gardenRow("Finish book", in: large), in: large)
+        reveal(large.buttons["+ PLANT A GOAL"], in: large)
+        review.capture(large, "27 Garden large Dynamic Type final Goal and CTA — Dark")
+        large.swipeDown()
+        large.swipeDown()
+        openGardenGoal("Study for MCAT", in: large)
+        XCTAssertTrue(large.buttons["+ ADD TASK"].waitForExistence(timeout: 3))
+        review.capture(large, "28 Goal Detail large Dynamic Type — Dark")
+        reveal(large.buttons["+ ADD TASK"], in: large)
+        review.capture(large, "29 Goal Detail large Dynamic Type scrolled CTA — Dark")
+        large.terminate()
+
+        // 3. Selection contrast — Dark
+        let home = XCUIApplication()
+        home.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "dark"]
+        home.launch()
+        XCTAssertTrue(home.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        home.buttons["30 min"].tap()
+        home.buttons["Good"].tap()
+        XCTAssertTrue(home.buttons["WHAT'S NEXT?"].isEnabled)
+        review.capture(home, "30 Home selections — Dark")
+
+        home.tabBars.buttons["Garden"].tap()
+        openGardenGoal("Study for MCAT", in: home)
+        home.buttons["+ ADD TASK"].tap()
+        XCTAssertTrue(home.textFields["Task title"].waitForExistence(timeout: 2))
+        home.buttons["30 min"].tap()
+        home.buttons["Good"].tap()
+        review.capture(home, "31 Add Task selections — Dark")
+        home.swipeDown()
+
+        home.tabBars.buttons["Home"].tap()
+        XCTAssertTrue(home.buttons["WHAT'S NEXT?"].waitForExistence(timeout: 2))
+        if !home.buttons["WHAT'S NEXT?"].isEnabled {
+            home.buttons["30 min"].tap()
+            home.buttons["Good"].tap()
+        }
+        home.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(home.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        home.buttons["START SESSION →"].tap()
+        XCTAssertTrue(home.buttons["Finish early"].waitForExistence(timeout: 2))
+        home.buttons["Finish early"].tap()
+        XCTAssertTrue(home.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        home.buttons["YES"].tap()
+        XCTAssertEqual(home.buttons["YES"].value as? String, "Selected")
+        review.capture(home, "32 Completion YES selected — Dark")
+        home.terminate()
+    }
+
     private func launchGardenEvolutionApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION"]
@@ -1646,6 +1936,7 @@ final class NextUITests: XCTestCase {
 private enum ReviewShotStore {
     static var writesToDisk: Bool {
         ProcessInfo.processInfo.environment["UITEST_WRITE_REVIEW_SHOTS"] == "1"
+            || ProcessInfo.processInfo.environment["TEST_RUNNER_UITEST_WRITE_REVIEW_SHOTS"] == "1"
             || ProcessInfo.processInfo.arguments.contains("UITEST_WRITE_REVIEW_SHOTS")
     }
 
@@ -1653,7 +1944,8 @@ private enum ReviewShotStore {
         _ app: XCUIApplication,
         named name: String,
         into directory: URL,
-        test: XCTestCase
+        test: XCTestCase,
+        forceDiskWrite: Bool = false
     ) {
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
@@ -1661,10 +1953,22 @@ private enum ReviewShotStore {
         attachment.lifetime = .keepAlways
         test.add(attachment)
 
-        guard writesToDisk else { return }
+        guard forceDiskWrite || writesToDisk else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent("\(name).png")
         try? screenshot.pngRepresentation.write(to: file)
+    }
+}
+
+private struct AppearanceCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M6-Dynamic-Appearance"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        // Active milestone review: always write M6 shots. Other milestones stay gated.
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
     }
 }
 

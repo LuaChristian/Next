@@ -8,10 +8,12 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct PlantView: View {
     let variant: PlantVariant
     let stage: GardenGrowthStage
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -24,7 +26,13 @@ struct PlantView: View {
                     // Full-color / line artwork is drawn as authored — never template-tinted.
             case .canvas:
                 Canvas { context, size in
-                    PlantDrawing.draw(variant: variant, stage: stage, in: &context, size: size)
+                    PlantDrawing.draw(
+                        variant: variant,
+                        stage: stage,
+                        in: &context,
+                        size: size,
+                        colorScheme: colorScheme
+                    )
                 }
             }
         }
@@ -39,12 +47,16 @@ enum PlantDrawing {
         variant: PlantVariant,
         stage: GardenGrowthStage,
         in context: inout GraphicsContext,
-        size: CGSize
+        size: CGSize,
+        colorScheme: ColorScheme = .light
     ) {
         let origin = CGPoint(x: size.width * 0.50, y: size.height * 0.93)
         let scale = min(size.width, size.height)
-        let ink = NextTheme.botanical
-        drawSeed(in: &context, origin: origin, scale: scale, color: ink.opacity(0.68))
+        let style: UIUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+        let resolved = UIColor(NextTheme.botanicalInk)
+            .resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        let ink = Color(uiColor: resolved)
+        drawSeed(in: &context, origin: origin, scale: scale, color: ink.opacity(colorScheme == .dark ? 0.78 : 0.68))
 
         switch variant {
         case .broadLeaf: drawBroad(stage, in: &context, origin: origin, scale: scale, ink: ink)

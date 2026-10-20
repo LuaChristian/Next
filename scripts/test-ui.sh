@@ -16,18 +16,18 @@ for sel in "$@"; do
   ARGS+=("-only-testing:$sel")
 done
 echo "== ui targeted: $* =="
+# TEST_RUNNER_* is injected into the XCTest runner process environment.
 if [[ "${UITEST_WRITE_REVIEW_SHOTS:-}" == "1" ]]; then
   echo "(Review/ disk writes ENABLED)"
-  export UITEST_WRITE_REVIEW_SHOTS=1
   time xcodebuild test \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
     "${ARGS[@]}" \
     $PARALLEL \
-    -test-runner-env UITEST_WRITE_REVIEW_SHOTS=1
+    TEST_RUNNER_UITEST_WRITE_REVIEW_SHOTS=1
 else
-  echo "(Review/ disk writes off — XCTAttachments only)"
+  echo "(Review/ disk writes off — XCTAttachments only; active-milestone captures may still write)"
   time xcodebuild test \
     -project "$PROJECT" \
     -scheme "$SCHEME" \

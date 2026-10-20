@@ -292,6 +292,7 @@ private struct FocusSettingsView: View {
         .nextCanvas(top: 16)
         .presentationDetents([.height(320), .medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(NextTheme.canvas)
     }
 }
 

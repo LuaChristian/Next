@@ -45,10 +45,12 @@ enum EnergyLevel: String, CaseIterable, Identifiable, Codable {
 struct HomeView: View {
     @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(AppearancePreference.key) private var appearanceRaw = AppearancePreference.system.rawValue
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
     @State private var recommendationInput: RecommendationInput?
+    @State private var showingAppearance = false
 
     private var canProceed: Bool {
         selectedTime != nil && selectedEnergy != nil
@@ -81,21 +83,39 @@ struct HomeView: View {
                 hasAnyTasks: !persistedTasks.isEmpty
             )
         }
+        .sheet(isPresented: $showingAppearance) {
+            AppearanceSettingsView(appearanceRaw: $appearanceRaw)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(NextTheme.canvas)
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 28) {
-            Text("NEXT")
-                .nextFont(13, weight: .medium, relativeTo: .caption)
-                .tracking(3.2)
-                .foregroundStyle(NextTheme.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text("NEXT")
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
+                    .tracking(3.2)
+                    .foregroundStyle(NextTheme.secondaryText)
+
+                Spacer(minLength: 12)
+
+                Button("APPEARANCE") {
+                    showingAppearance = true
+                }
+                .nextFont(11, weight: .semibold, relativeTo: .caption2)
+                .tracking(1.6)
+                .foregroundStyle(NextTheme.botanicalAccent)
+                .accessibilityIdentifier("appearanceButton")
+                .accessibilityHint("Choose System, Light, or Dark")
+            }
 
             Text("Good afternoon.")
                 .nextFont(34, relativeTo: .largeTitle)
-                .foregroundStyle(NextTheme.ink)
+                .foregroundStyle(NextTheme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .combine)
     }
 
     private var timeSection: some View {
