@@ -43,7 +43,11 @@ struct FocusView: View {
                 focusContent
             }
         }
-        .onDisappear(perform: restoreIdleTimer)
+        .onAppear { FocusSessionPresence.isActive = true }
+        .onDisappear {
+            FocusSessionPresence.isActive = false
+            restoreIdleTimer()
+        }
     }
 
     private var focusContent: some View {

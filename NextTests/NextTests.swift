@@ -3026,3 +3026,303 @@ private extension GoalTask {
         title == "Review amino acids" && durationMinutes == 30
     }
 }
+
+// MARK: - V2-M7 Smart Reminders
+
+@MainActor
+final class MockDailyReminderScheduler: DailyReminderScheduling {
+    var status: UNAuthorizationStatus = .authorized
+    var grantOnRequest = true
+    private(set) var pending: [UNNotificationRequest] = []
+    private(set) var cancelCount = 0
+    private(set) var requestCount = 0
+    private(set) var scheduledIdentifiers: [String] = []
+
+    func authorizationStatus() async -> UNAuthorizationStatus { status }
+
+    func requestAuthorization() async -> Bool {
+        requestCount += 1
+        if grantOnRequest { status = .authorized }
+        return grantOnRequest
+    }
+
+    func pendingReminderIdentifiers() async -> [String] {
+        pending.map(\.identifier).filter { $0 == DailyReminder.identifier }
+    }
+
+    func scheduleReminder(_ request: UNNotificationRequest) async {
+        pending.removeAll { $0.identifier == request.identifier }
+        pending.append(request)
+        scheduledIdentifiers.append(request.identifier)
+    }
+
+    func cancelReminderNotifications() {
+        pending.removeAll { $0.identifier == DailyReminder.identifier }
+        cancelCount += 1
+    }
+}
+
+struct SmartRemindersTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private func day(_ year: Int, _ month: Int, _ day: Int, hour: Int, minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    @Test func remindersDefaultOff() {
+        let defaults = UserDefaults(suiteName: "next.reminder-default-\(UUID().uuidString)")!
+        #expect(ReminderPreference.isEnabled(in: defaults) == false)
+        #expect(ReminderPreference.hour(in: defaults) == 9)
+        #expect(ReminderPreference.minute(in: defaults) == 0)
+    }
+
+    @Test func reminderTimePersistsLocally() {
+        let defaults = UserDefaults(suiteName: "next.reminder-time-\(UUID().uuidString)")!
+        ReminderPreference.setTime(hour: 14, minute: 45, in: defaults)
+        #expect(ReminderPreference.hour(in: defaults) == 14)
+        #expect(ReminderPreference.minute(in: defaults) == 45)
+        ReminderPreference.setEnabled(true, in: defaults)
+        #expect(ReminderPreference.isEnabled(in: defaults))
+        ReminderPreference.setEnabled(false, in: defaults)
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+    }
+
+    @Test func nextFireUsesLocalCalendarAndSkipsTodayAfterFocus() {
+        let now = day(2026, 3, 8, hour: 8, minute: 0)
+        let todayFire = DailyReminder.nextFireDate(
+            now: now,
+            hour: 9,
+            minute: 0,
+            hasFocusedToday: false,
+            calendar: calendar
+        )
+        #expect(calendar.component(.day, from: todayFire) == 8)
+        #expect(calendar.component(.hour, from: todayFire) == 9)
+
+        let afterFocus = DailyReminder.nextFireDate(
+            now: now,
+            hour: 9,
+            minute: 0,
+            hasFocusedToday: true,
+            calendar: calendar
+        )
+        #expect(calendar.component(.day, from: afterFocus) == 9)
+
+        let afterClock = DailyReminder.nextFireDate(
+            now: day(2026, 3, 8, hour: 10),
+            hour: 9,
+            minute: 0,
+            hasFocusedToday: false,
+            calendar: calendar
+        )
+        #expect(calendar.component(.day, from: afterClock) == 9)
+    }
+
+    @Test func hasFocusedTodayIgnoresTaskCompletionSemantics() {
+        let now = day(2026, 3, 8, hour: 12)
+        #expect(
+            DailyReminder.hasFocusedToday(
+                completedAtDates: [day(2026, 3, 8, hour: 7)],
+                now: now,
+                calendar: calendar
+            )
+        )
+        #expect(
+            !DailyReminder.hasFocusedToday(
+                completedAtDates: [day(2026, 3, 7, hour: 18)],
+                now: now,
+                calendar: calendar
+            )
+        )
+    }
+
+    @Test func reminderCopyIsCalmAndNonPersonalized() {
+        for message in DailyReminder.messages {
+            #expect(!message.lowercased().contains("streak"))
+            #expect(!message.lowercased().contains("missed"))
+            #expect(!message.lowercased().contains("urgent"))
+        }
+        let body = DailyReminder.message(for: day(2026, 1, 1, hour: 9), calendar: calendar)
+        #expect(DailyReminder.messages.contains(body))
+    }
+
+    @Test func reminderAndFocusCompletionIdentifiersStayDistinct() {
+        #expect(DailyReminder.identifier == "next.reminder.daily")
+        #expect(FocusCompletionNotification.identifier == "next.focus.completion")
+        #expect(DailyReminder.identifier != FocusCompletionNotification.identifier)
+        #expect(FocusNotificationPresentation.options(for: FocusCompletionNotification.identifier).isEmpty)
+        #expect(!FocusNotificationPresentation.options(for: DailyReminder.identifier).isEmpty)
+    }
+
+    @MainActor
+    @Test func enableSchedulesOneReminderWhenAuthorized() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-enable-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+        let now = day(2026, 3, 8, hour: 8)
+
+        let auth = await coordinator.enable(now: now, hasFocusedToday: false)
+        #expect(auth == .authorized)
+        #expect(ReminderPreference.isEnabled(in: defaults))
+        #expect(scheduler.pending.count == 1)
+        #expect(scheduler.pending.first?.identifier == DailyReminder.identifier)
+        #expect(coordinator.lastScheduledFireDate == day(2026, 3, 8, hour: 9))
+    }
+
+    @MainActor
+    @Test func deniedPermissionLeavesRemindersOff() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-denied-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        scheduler.status = .denied
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+
+        let auth = await coordinator.enable(now: day(2026, 3, 8, hour: 8), hasFocusedToday: false)
+        #expect(auth == .denied)
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(scheduler.pending.isEmpty)
+        #expect(scheduler.requestCount == 0)
+    }
+
+    @MainActor
+    @Test func disableCancelsOnlyReminderNotifications() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-disable-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+        _ = await coordinator.enable(now: day(2026, 3, 8, hour: 8), hasFocusedToday: false)
+        coordinator.disable()
+
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(scheduler.pending.isEmpty)
+        #expect(scheduler.cancelCount >= 2)
+        #expect(!scheduler.scheduledIdentifiers.contains(FocusCompletionNotification.identifier))
+    }
+
+    @MainActor
+    @Test func timeChangeReschedulesWithoutDuplicates() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-reschedule-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+        let now = day(2026, 3, 8, hour: 8)
+        _ = await coordinator.enable(now: now, hasFocusedToday: false)
+        await coordinator.updateTime(hour: 18, minute: 30, now: now, hasFocusedToday: false)
+
+        #expect(ReminderPreference.hour(in: defaults) == 18)
+        #expect(ReminderPreference.minute(in: defaults) == 30)
+        #expect(scheduler.pending.count == 1)
+        #expect(scheduler.pending.first?.identifier == DailyReminder.identifier)
+        #expect(coordinator.lastScheduledFireDate == day(2026, 3, 8, hour: 18, minute: 30))
+        let pendingIds = await scheduler.pendingReminderIdentifiers()
+        #expect(pendingIds == [DailyReminder.identifier])
+    }
+
+    @MainActor
+    @Test func reconcileSuppressesTodayWhenFocused() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-suppress-\(UUID().uuidString)")!
+        ReminderPreference.setEnabled(true, in: defaults)
+        ReminderPreference.setTime(hour: 9, minute: 0, in: defaults)
+        let scheduler = MockDailyReminderScheduler()
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+        let now = day(2026, 3, 8, hour: 8)
+        await coordinator.reconcile(now: now, hasFocusedToday: true)
+
+        #expect(coordinator.lastScheduledFireDate == day(2026, 3, 9, hour: 9))
+        #expect(scheduler.pending.count == 1)
+    }
+
+    @MainActor
+    @Test func reconcileDisablesWhenAuthorizationRevoked() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-revoke-\(UUID().uuidString)")!
+        ReminderPreference.setEnabled(true, in: defaults)
+        let scheduler = MockDailyReminderScheduler()
+        scheduler.status = .denied
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: calendar
+        )
+        await coordinator.reconcile(now: day(2026, 3, 8, hour: 8), hasFocusedToday: false)
+
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(scheduler.pending.isEmpty)
+    }
+
+    @MainActor
+    @Test func requestingAuthorizationOnlyWhenEnabling() async {
+        let defaults = UserDefaults(suiteName: "next.reminder-prompt-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        scheduler.status = .notDetermined
+        scheduler.grantOnRequest = true
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: false,
+            defaults: defaults,
+            calendar: calendar
+        )
+        #expect(coordinator.authorizationRequests == 0)
+        _ = await coordinator.enable(now: day(2026, 3, 8, hour: 8), hasFocusedToday: false)
+        #expect(coordinator.authorizationRequests == 1)
+        #expect(scheduler.requestCount == 1)
+        #expect(ReminderPreference.isEnabled(in: defaults))
+    }
+
+    @MainActor
+    @Test func reminderPreferencesDoNotMutateFocusSessions() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        context.insert(GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal))
+        let session = FocusSession(
+            completedAt: day(2026, 3, 8, hour: 7),
+            plannedDurationSeconds: 25 * 60,
+            focusedDurationSeconds: 25 * 60,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Review amino acids",
+            goalTitleSnapshot: "Study for MCAT",
+            goal: goal
+        )
+        context.insert(session)
+        try context.save()
+
+        let defaults = UserDefaults(suiteName: "next.reminder-domain-\(UUID().uuidString)")!
+        ReminderPreference.setEnabled(true, in: defaults)
+        ReminderPreference.setTime(hour: 16, minute: 0, in: defaults)
+
+        let fetched = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.taskWasFinished == false)
+        #expect(fetched.first?.taskTitleSnapshot == "Review amino acids")
+        #expect(DailyReminderCoordinator.hasFocusedToday(context: context, now: day(2026, 3, 8, hour: 12), calendar: calendar))
+    }
+}
+

@@ -9,14 +9,19 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
+    @State private var selectedTab = 0
+
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack {
                 HomeView()
             }
             .tabItem {
                 Label("Home", systemImage: "house")
             }
+            .tag(0)
 
             NavigationStack {
                 GardenView()
@@ -24,6 +29,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Garden", systemImage: "leaf")
             }
+            .tag(1)
 
             NavigationStack {
                 HistoryView()
@@ -31,10 +37,24 @@ struct ContentView: View {
             .tabItem {
                 Label("History", systemImage: "clock")
             }
+            .tag(2)
         }
         .tint(NextTheme.botanicalAccent)
         .toolbarBackground(NextTheme.canvas, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await DailyReminderCoordinator.shared.reconcile(context: modelContext)
+            }
+        }
+        .task {
+            await DailyReminderCoordinator.shared.reconcile(context: modelContext)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nextPreferHomeTab)) { _ in
+            guard !FocusSessionPresence.isActive else { return }
+            selectedTab = 0
+        }
     }
 }
 

@@ -1702,6 +1702,197 @@ final class NextUITests: XCTestCase {
         home.terminate()
     }
 
+    @MainActor
+    func testSmartRemindersDefaultsOffAndPersists() throws {
+        let first = XCUIApplication()
+        first.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        first.launch()
+        XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        first.buttons["appearanceButton"].tap()
+        XCTAssertTrue(first.descendants(matching: .any)["preferencesSheet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(first.staticTexts["REMINDERS"].waitForExistence(timeout: 2))
+        let toggle = first.switches["dailyReminderToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 2))
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.tap()
+        XCTAssertEqual(first.switches["dailyReminderToggle"].value as? String, "1")
+        XCTAssertTrue(first.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
+        first.buttons["DONE"].tap()
+        first.terminate()
+
+        let second = XCUIApplication()
+        second.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        second.launch()
+        XCTAssertTrue(second.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        second.buttons["appearanceButton"].tap()
+        XCTAssertTrue(second.switches["dailyReminderToggle"].waitForExistence(timeout: 2))
+        XCTAssertEqual(second.switches["dailyReminderToggle"].value as? String, "1")
+        second.switches["dailyReminderToggle"].tap()
+        XCTAssertEqual(second.switches["dailyReminderToggle"].value as? String, "0")
+        second.buttons["DONE"].tap()
+    }
+
+    @MainActor
+    func testSmartRemindersDeniedShowsSettingsGuidance() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "denied"
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        app.buttons["appearanceButton"].tap()
+        XCTAssertTrue(app.switches["dailyReminderToggle"].waitForExistence(timeout: 2))
+        app.switches["dailyReminderToggle"].tap()
+        XCTAssertEqual(app.switches["dailyReminderToggle"].value as? String, "0")
+        XCTAssertTrue(app.buttons["openNotificationSettings"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Notifications are turned off for Next in iOS Settings. Reminders cannot be delivered until you allow them."].exists)
+        app.buttons["DONE"].tap()
+    }
+
+    /// Replacement capture for enabled-state DONE safe-area spacing (shot 03 only).
+    @MainActor
+    func testSmartRemindersEnabledSpacingScreenshot() throws {
+        let review = SmartRemindersCapture(self)
+        let enabled = XCUIApplication()
+        enabled.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "on",
+            "UITEST_REMINDER_HOUR", "9",
+            "UITEST_REMINDER_MINUTE", "30",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        enabled.launch()
+        XCTAssertTrue(enabled.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        enabled.buttons["appearanceButton"].tap()
+        XCTAssertTrue(enabled.descendants(matching: .any)["preferencesSheet"].waitForExistence(timeout: 2))
+        XCTAssertEqual(enabled.switches["dailyReminderToggle"].value as? String, "1")
+        XCTAssertTrue(enabled.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
+        let done = enabled.buttons["DONE"]
+        XCTAssertTrue(done.waitForExistence(timeout: 2))
+        XCTAssertTrue(done.isHittable)
+        // Assert clearance: DONE must sit above the home indicator, not flush to it.
+        let doneFrame = done.frame
+        let appFrame = enabled.frame
+        XCTAssertGreaterThan(
+            appFrame.maxY - doneFrame.maxY,
+            28,
+            "DONE should clear the bottom safe area / home indicator"
+        )
+        review.capture(enabled, "03 Reminder enabled with selected time")
+        enabled.terminate()
+    }
+
+    @MainActor
+    func testSmartRemindersVisualReview() throws {
+        let review = SmartRemindersCapture(self)
+
+        let light = XCUIApplication()
+        light.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        light.launch()
+        XCTAssertTrue(light.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        light.buttons["appearanceButton"].tap()
+        revealReminders(in: light)
+        review.capture(light, "01 Reminder settings — Light")
+        light.terminate()
+
+        let dark = XCUIApplication()
+        dark.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        dark.launch()
+        XCTAssertTrue(dark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        dark.buttons["appearanceButton"].tap()
+        revealReminders(in: dark)
+        review.capture(dark, "02 Reminder settings — Dark")
+        dark.terminate()
+
+        let enabled = XCUIApplication()
+        enabled.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "on",
+            "UITEST_REMINDER_HOUR", "9",
+            "UITEST_REMINDER_MINUTE", "30",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        enabled.launch()
+        XCTAssertTrue(enabled.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        enabled.buttons["appearanceButton"].tap()
+        revealReminders(in: enabled)
+        XCTAssertEqual(enabled.switches["dailyReminderToggle"].value as? String, "1")
+        XCTAssertTrue(enabled.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
+        XCTAssertTrue(enabled.staticTexts["dailyReminderTimeSummary"].waitForExistence(timeout: 2))
+        review.capture(enabled, "03 Reminder enabled with selected time")
+        enabled.terminate()
+
+        let denied = XCUIApplication()
+        denied.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "denied"
+        ]
+        denied.launch()
+        XCTAssertTrue(denied.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        denied.buttons["appearanceButton"].tap()
+        revealReminders(in: denied)
+        denied.switches["dailyReminderToggle"].tap()
+        XCTAssertTrue(denied.buttons["openNotificationSettings"].waitForExistence(timeout: 2))
+        reveal(denied.buttons["openNotificationSettings"], in: denied)
+        review.capture(denied, "04 Permission denied — open iOS Settings")
+        denied.terminate()
+
+        let large = XCUIApplication()
+        large.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "on",
+            "UITEST_REMINDER_HOUR", "9",
+            "UITEST_REMINDER_MINUTE", "0",
+            "UITEST_REMINDER_AUTH", "authorized",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        large.launch()
+        XCTAssertTrue(large.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        large.buttons["appearanceButton"].tap()
+        revealReminders(in: large)
+        reveal(large.switches["dailyReminderToggle"], in: large)
+        review.capture(large, "05 Large Dynamic Type reminder settings")
+        large.terminate()
+    }
+
+    private func revealReminders(in app: XCUIApplication) {
+        let reminders = app.staticTexts["REMINDERS"]
+        XCTAssertTrue(reminders.waitForExistence(timeout: 2))
+        reveal(reminders, in: app)
+        let toggle = app.switches["dailyReminderToggle"]
+        if toggle.waitForExistence(timeout: 1) {
+            reveal(toggle, in: app)
+        }
+    }
+
     private func launchGardenEvolutionApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION"]
@@ -1967,7 +2158,18 @@ private struct AppearanceCapture {
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
     func capture(_ app: XCUIApplication, _ name: String) {
-        // Active milestone review: always write M6 shots. Other milestones stay gated.
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct SmartRemindersCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M7-Smart-Reminders"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        // Active milestone review: always write M7 shots.
         ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
     }
 }

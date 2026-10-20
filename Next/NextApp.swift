@@ -24,6 +24,7 @@ struct NextApp: App {
                 initialValue: OnboardingPreference.resolveCompleted(goalsExist: goalsExist)
             )
             AppearancePreference.applyLaunchOverrides()
+            ReminderPreference.applyLaunchOverrides()
             NextTheme.applyChrome()
             NextNotificationCenterDelegate.register()
         } catch {

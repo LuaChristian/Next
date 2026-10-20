@@ -50,7 +50,7 @@ struct HomeView: View {
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
     @State private var recommendationInput: RecommendationInput?
-    @State private var showingAppearance = false
+    @State private var showingPreferences = false
 
     private var canProceed: Bool {
         selectedTime != nil && selectedEnergy != nil
@@ -83,9 +83,9 @@ struct HomeView: View {
                 hasAnyTasks: !persistedTasks.isEmpty
             )
         }
-        .sheet(isPresented: $showingAppearance) {
-            AppearanceSettingsView(appearanceRaw: $appearanceRaw)
-                .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showingPreferences) {
+            PreferencesView(appearanceRaw: $appearanceRaw)
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(NextTheme.canvas)
         }
@@ -101,14 +101,14 @@ struct HomeView: View {
 
                 Spacer(minLength: 12)
 
-                Button("APPEARANCE") {
-                    showingAppearance = true
+                Button("PREFERENCES") {
+                    showingPreferences = true
                 }
                 .nextFont(11, weight: .semibold, relativeTo: .caption2)
                 .tracking(1.6)
                 .foregroundStyle(NextTheme.botanicalAccent)
                 .accessibilityIdentifier("appearanceButton")
-                .accessibilityHint("Choose System, Light, or Dark")
+                .accessibilityHint("Appearance and optional daily reminders")
             }
 
             Text("Good afternoon.")

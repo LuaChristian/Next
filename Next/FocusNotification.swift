@@ -133,4 +133,16 @@ final class NextNotificationCenterDelegate: NSObject, UNUserNotificationCenterDe
     ) async -> UNNotificationPresentationOptions {
         FocusNotificationPresentation.options(for: notification.request.identifier)
     }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let identifier = response.notification.request.identifier
+        guard identifier == DailyReminder.identifier else { return }
+        await MainActor.run {
+            guard !FocusSessionPresence.isActive else { return }
+            NotificationCenter.default.post(name: .nextPreferHomeTab, object: nil)
+        }
+    }
 }
