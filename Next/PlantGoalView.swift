@@ -122,7 +122,12 @@ struct PlantGoalView: View {
             titleFocused = false
             guard let area = selectedArea, let trimmed = NextInput.trimmedTitle(title) else { return }
             modelContext.insert(
-                Goal(title: trimmed, area: area, priority: selectedPriority)
+                Goal(
+                    title: trimmed,
+                    area: area,
+                    priority: selectedPriority,
+                    plantVariant: PlantVariant.next(in: modelContext)
+                )
             )
             try? modelContext.save()
             dismiss()

@@ -11,12 +11,31 @@ import SwiftUI
 struct CompletionView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query(sort: \Goal.createdAt) private var goals: [Goal]
 
     let result: FocusSessionResult
     let onFinished: () -> Void
 
     @State private var completion = SessionCompletionState()
     @State private var didCommit = false
+
+    private var relatedGoal: Goal? {
+        if let id = result.task.goalID {
+            return goals.first { $0.id == id }
+        }
+        return goals.first { $0.title == result.task.goal }
+    }
+
+    private var botanicalAcknowledgement: String? {
+        guard completion.taskCompletion != nil else { return nil }
+        let previous = relatedGoal?.growthStage ?? GardenGrowth.stage(for: 0)
+        let accumulated = (relatedGoal?.totalFocusedDuration ?? 0) + result.focusedDurationSeconds
+        return GardenAcknowledgement.message(
+            goalTitle: result.task.goal,
+            previousStage: previous,
+            nextStage: GardenGrowth.stage(for: accumulated)
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -97,6 +116,15 @@ struct CompletionView: View {
             HStack(spacing: 8) {
                 completionOption("YES", status: .completed)
                 completionOption("NOT YET", status: .notCompleted)
+            }
+
+            if let botanicalAcknowledgement {
+                Text(botanicalAcknowledgement)
+                    .nextFont(17)
+                    .foregroundStyle(NextTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("gardenAcknowledgement")
             }
 
             NextHairline()

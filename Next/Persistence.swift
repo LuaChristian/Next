@@ -9,9 +9,8 @@ import Foundation
 import SwiftData
 
 enum NextPersistence {
-    /// Same model types as V1/V2-M1. V2-M3 changes Goal→FocusSession from
-    /// cascade to nullify so deleting a Goal keeps historical sessions.
-    /// No stored properties were added or removed.
+    /// Same model types as V1/V2. V2-M5 adds Goal.plantVariantRaw with a
+    /// stored default so existing rows migrate to broadLeaf without a wipe.
     static let schema = Schema([Goal.self, GoalTask.self, FocusSession.self])
     static let seedArgument = "UITEST_SEED_GARDEN"
     static let lifecycleSeedArgument = "UITEST_SEED_TASK_LIFECYCLE"
@@ -19,6 +18,8 @@ enum NextPersistence {
     static let historySeedArgument = "UITEST_SEED_HISTORY"
     static let recommendationSeedArgument = "UITEST_SEED_RECOMMENDATION_ENGINE"
     static let managementSeedArgument = "UITEST_SEED_MANAGEMENT"
+    static let gardenEvolutionSeedArgument = "UITEST_SEED_GARDEN_EVOLUTION"
+    static let plantComparisonArgument = "UITEST_PLANT_COMPARISON"
     static let inMemoryArgument = "UITEST_IN_MEMORY"
     static let storeURLArgument = "UITEST_STORE_URL"
 
@@ -51,6 +52,8 @@ enum NextPersistence {
             || arguments.contains(lifecycleSeedArgument)
             || arguments.contains(recommendationSeedArgument)
             || arguments.contains(managementSeedArgument)
+            || arguments.contains(gardenEvolutionSeedArgument)
+            || arguments.contains(plantComparisonArgument)
             || arguments.contains(inMemoryArgument) {
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -73,6 +76,9 @@ enum NextPersistence {
             if arguments.contains(managementSeedArgument) {
                 seedManagement(context)
             }
+            if arguments.contains(gardenEvolutionSeedArgument) {
+                seedGardenEvolution(context)
+            }
             return container
         }
 
@@ -91,20 +97,20 @@ enum NextPersistence {
     }
 
     static func seed(_ context: ModelContext) {
-        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
         context.insert(mcat)
         context.insert(GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: mcat))
         context.insert(GoalTask(title: "Review flashcards", durationMinutes: 15, energyRequired: .low, goal: mcat))
 
-        let personal = Goal(title: "Keep your space organized", area: .personal, priority: .normal)
+        let personal = Goal(title: "Keep your space organized", area: .personal, priority: .normal, plantVariant: .narrowLeaf)
         context.insert(personal)
         context.insert(GoalTask(title: "Clean your space", durationMinutes: 15, energyRequired: .low, goal: personal))
 
-        let career = Goal(title: "Improve programming", area: .career, priority: .normal)
+        let career = Goal(title: "Improve programming", area: .career, priority: .normal, plantVariant: .branching)
         context.insert(career)
         context.insert(GoalTask(title: "Coding practice", durationMinutes: 45, energyRequired: .ready, goal: career))
 
-        let creative = Goal(title: "Build something", area: .creative, priority: .normal)
+        let creative = Goal(title: "Build something", area: .creative, priority: .normal, plantVariant: .roundedLeaf)
         context.insert(creative)
         context.insert(GoalTask(title: "Work on personal project", durationMinutes: 60, energyRequired: .good, goal: creative))
 
@@ -112,8 +118,8 @@ enum NextPersistence {
     }
 
     static func seedGrowthStages(_ context: ModelContext) {
-        func plant(_ title: String, minutes: Double) {
-            let goal = Goal(title: title, area: .education, priority: .normal)
+        func plant(_ title: String, minutes: Double, variant: PlantVariant) {
+            let goal = Goal(title: title, area: .education, priority: .normal, plantVariant: variant)
             context.insert(goal)
             guard minutes > 0 else { return }
             context.insert(
@@ -127,11 +133,58 @@ enum NextPersistence {
             )
         }
 
-        plant("Beginning study", minutes: 0)
-        plant("First growth", minutes: 30)
-        plant("Young plant", minutes: 120)
-        plant("Growing plant", minutes: 300)
-        plant("Mature plant", minutes: 600)
+        plant("Beginning study", minutes: 0, variant: .broadLeaf)
+        plant("First growth", minutes: 30, variant: .narrowLeaf)
+        plant("Young plant", minutes: 120, variant: .branching)
+        plant("Growing plant", minutes: 300, variant: .roundedLeaf)
+        plant("Mature plant", minutes: 600, variant: .broadLeaf)
+        try? context.save()
+    }
+
+    static func seedGardenEvolution(_ context: ModelContext) {
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
+        context.insert(mcat)
+        context.insert(GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: mcat))
+
+        let next = Goal(title: "Build Next", area: .creative, priority: .normal, plantVariant: .narrowLeaf)
+        context.insert(next)
+        context.insert(GoalTask(title: "Sketch the garden", durationMinutes: 30, energyRequired: .good, goal: next))
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 120 * 60,
+                focusedDurationSeconds: 120 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: next
+            )
+        )
+
+        let interview = Goal(title: "Interview preparation", area: .career, priority: .normal, plantVariant: .branching)
+        context.insert(interview)
+        context.insert(GoalTask(title: "Practice arrays", durationMinutes: 45, energyRequired: .ready, goal: interview))
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 300 * 60,
+                focusedDurationSeconds: 300 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: interview
+            )
+        )
+
+        let book = Goal(title: "Finish book", area: .education, priority: .normal, plantVariant: .roundedLeaf)
+        context.insert(book)
+        context.insert(GoalTask(title: "Read chapter", durationMinutes: 20, energyRequired: .low, goal: book))
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 600 * 60,
+                focusedDurationSeconds: 600 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: book
+            )
+        )
+
         try? context.save()
     }
 

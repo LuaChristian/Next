@@ -115,47 +115,57 @@ struct GoalDetailView: View {
     }
 
     private func header(_ goal: Goal) -> some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(goal.title)
-                    .nextFont(28, relativeTo: .title)
-                    .foregroundStyle(NextTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(goal.area.title.uppercased())
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.8)
-                    .foregroundStyle(NextTheme.secondary)
-                    .padding(.top, 10)
-
-                Text(goal.priority.title.uppercased() + " PRIORITY")
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.4)
-                    .foregroundStyle(NextTheme.secondary)
-                    .padding(.top, 8)
-
-                Text(GardenMetrics.sessionCountLabel(goal.sessionCount))
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.4)
-                    .foregroundStyle(NextTheme.secondary)
-                    .padding(.top, 18)
-
-                Text(GardenMetrics.focusedDurationLabel(seconds: goal.totalFocusedDuration))
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.4)
-                    .foregroundStyle(NextTheme.secondary)
-                    .padding(.top, 6)
+        Group {
+            if compactPlant {
+                VStack(alignment: .leading, spacing: 16) {
+                    PlantView(variant: goal.plantVariant, stage: goal.growthStage)
+                        .frame(width: 56, height: 76)
+                    headerCopy(goal)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 20) {
+                    headerCopy(goal)
+                    PlantView(variant: goal.plantVariant, stage: goal.growthStage)
+                        .frame(width: 108, height: 148)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            BotanicalPlantView(stage: goal.growthStage)
-                .frame(
-                    width: compactPlant ? 56 : 84,
-                    height: compactPlant ? 76 : 116
-                )
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(goal.progressAccessibilityLabel)
+    }
+
+    private func headerCopy(_ goal: Goal) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(goal.title)
+                .nextFont(28, relativeTo: .title)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(goal.area.title.uppercased())
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.8)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 10)
+
+            Text(goal.priority.title.uppercased() + " PRIORITY")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.4)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 8)
+
+            Text(GardenMetrics.sessionCountLabel(goal.sessionCount))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.4)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 18)
+
+            Text(GardenMetrics.focusedDurationLabel(seconds: goal.totalFocusedDuration))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.4)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

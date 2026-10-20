@@ -18,34 +18,67 @@ struct GardenView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("GARDEN")
-                .nextFont(13, weight: .medium, relativeTo: .caption)
-                .tracking(3.2)
-                .foregroundStyle(NextTheme.secondary)
-                .accessibilityAddTraits(.isHeader)
-
-            if goals.isEmpty {
+        Group {
+            if compactPlant {
                 ScrollView {
-                    emptyState
+                    VStack(alignment: .leading, spacing: 0) {
+                        gardenHeader
+                        gardenContent
+                        NextPrimaryAction(title: "+ PLANT A GOAL") {
+                            isPlanting = true
+                        }
+                        .padding(.top, 28)
+                    }
+                    .padding(.horizontal, NextTheme.pagePadding)
+                    .padding(.top, 12)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .background(NextTheme.canvas.ignoresSafeArea())
             } else {
-                goalList
-            }
+                VStack(alignment: .leading, spacing: 0) {
+                    gardenHeader
+                    ScrollView {
+                        gardenContent
+                    }
+                    .scrollDismissesKeyboard(.interactively)
 
-            Spacer(minLength: 24)
-
-            NextPrimaryAction(title: "+ PLANT A GOAL") {
-                isPlanting = true
+                    NextPrimaryAction(title: "+ PLANT A GOAL") {
+                        isPlanting = true
+                    }
+                    .padding(.top, 8)
+                }
+                .padding(.horizontal, NextTheme.pagePadding)
+                .padding(.top, 12)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(NextTheme.canvas.ignoresSafeArea())
             }
         }
-        .nextCanvas()
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: UUID.self) { goalID in
             GoalDetailView(goalID: goalID)
         }
         .navigationDestination(isPresented: $isPlanting) {
             PlantGoalView()
+        }
+    }
+
+    private var gardenHeader: some View {
+        Text("GARDEN")
+            .nextFont(13, weight: .medium, relativeTo: .caption)
+            .tracking(3.2)
+            .foregroundStyle(NextTheme.secondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private var gardenContent: some View {
+        if goals.isEmpty {
+            emptyState
+        } else {
+            goalRows
         }
     }
 
@@ -65,36 +98,34 @@ struct GardenView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var goalList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Your goals")
-                    .nextFont(17)
-                    .foregroundStyle(NextTheme.ink)
-                    .padding(.top, 36)
-                    .padding(.bottom, 12)
+    private var goalRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Your goals")
+                .nextFont(17)
+                .foregroundStyle(NextTheme.ink)
+                .padding(.top, 36)
+                .padding(.bottom, 12)
 
-                ForEach(goals) { goal in
-                    NavigationLink(value: goal.id) {
-                        goalRow(goal)
-                    }
-                    .buttonStyle(.plain)
+            ForEach(goals) { goal in
+                NavigationLink(value: goal.id) {
+                    goalRow(goal)
+                }
+                .buttonStyle(.plain)
 
-                    if goal.id != goals.last?.id {
-                        NextHairline()
-                    }
+                if goal.id != goals.last?.id {
+                    NextHairline()
                 }
             }
         }
-        .scrollDismissesKeyboard(.interactively)
+        .padding(.bottom, 12)
     }
 
     private func goalRow(_ goal: Goal) -> some View {
-        HStack(alignment: .center, spacing: compactPlant ? 12 : 18) {
-            BotanicalPlantView(stage: goal.growthStage)
+        HStack(alignment: .center, spacing: compactPlant ? 12 : 20) {
+            PlantView(variant: goal.plantVariant, stage: goal.growthStage)
                 .frame(
-                    width: compactPlant ? 36 : 58,
-                    height: compactPlant ? 50 : 82
+                    width: compactPlant ? 48 : 72,
+                    height: compactPlant ? 68 : 104
                 )
 
             VStack(alignment: .leading, spacing: 8) {
@@ -117,11 +148,11 @@ struct GardenView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 22)
+        .padding(.vertical, compactPlant ? 18 : 28)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(goal.progressAccessibilityLabel)
-        .accessibilityValue("stage \(goal.growthStage.rawValue)")
+        .accessibilityValue(goal.growthStage.spokenName)
         .accessibilityIdentifier("gardenGoal-\(goal.title)")
     }
 }

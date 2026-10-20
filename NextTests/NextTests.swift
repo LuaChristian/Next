@@ -899,6 +899,7 @@ struct OnboardingTests {
         #expect(goals.contains { $0.title == "Build strength" && $0.area == .fitness })
         #expect(goals.allSatisfy { $0.priority == .normal })
         #expect(goals.allSatisfy { $0.tasks.isEmpty })
+        #expect(Set(goals.map(\.plantVariant)).count == 2)
         #expect(OnboardingPreference.isCompleted(in: defaults))
     }
 
@@ -1004,6 +1005,14 @@ struct GardenGrowthTests {
     @Test func stageFourFromTenHours() {
         #expect(GardenGrowth.stage(for: 600 * 60) == .mature)
         #expect(GardenGrowth.stage(for: 1000 * 60) == .mature)
+    }
+
+    @Test func spokenNamesAreUnderstandable() {
+        #expect(GardenGrowthStage.seedling.spokenName == "Beginning")
+        #expect(GardenGrowthStage.sprout.spokenName == "Establishing")
+        #expect(GardenGrowthStage.young.spokenName == "Developing")
+        #expect(GardenGrowthStage.growing.spokenName == "Flourishing")
+        #expect(GardenGrowthStage.mature.spokenName == "Mature")
     }
 }
 
@@ -2462,6 +2471,464 @@ struct NextInputTests {
             endedNaturally: false
         )
         #expect(result.focusedDurationLabel == "1H 25M FOCUSED")
+    }
+}
+
+struct PlantIdentityTests {
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try NextPersistence.makeInMemoryContainer())
+    }
+
+    @Test func nextVariantPrefersLeastUsedInStableOrder() {
+        #expect(PlantVariant.next(among: []) == .broadLeaf)
+
+        let first = Goal(title: "A", area: .education, priority: .normal, plantVariant: .broadLeaf)
+        #expect(PlantVariant.next(among: [first]) == .narrowLeaf)
+
+        let second = Goal(title: "B", area: .career, priority: .normal, plantVariant: .narrowLeaf)
+        #expect(PlantVariant.next(among: [first, second]) == .branching)
+
+        let third = Goal(title: "C", area: .creative, priority: .normal, plantVariant: .branching)
+        #expect(PlantVariant.next(among: [first, second, third]) == .roundedLeaf)
+
+        let fourth = Goal(title: "D", area: .personal, priority: .normal, plantVariant: .roundedLeaf)
+        #expect(PlantVariant.next(among: [first, second, third, fourth]) == .broadLeaf)
+    }
+
+    @MainActor
+    @Test func newGoalReceivesValidVariant() throws {
+        let context = try makeContext()
+        let goal = Goal(
+            title: "Study for MCAT",
+            area: .education,
+            priority: .high,
+            plantVariant: PlantVariant.next(in: context)
+        )
+        context.insert(goal)
+        try context.save()
+        #expect(PlantVariant.allCases.contains(goal.plantVariant))
+        #expect(goal.plantVariant == .broadLeaf)
+    }
+
+    @MainActor
+    @Test func differentGoalsCanReceiveDifferentVariants() throws {
+        let context = try makeContext()
+        var planted: [Goal] = []
+        for title in ["MCAT", "Next", "Interview", "Book"] {
+            let goal = Goal(
+                title: title,
+                area: .education,
+                priority: .normal,
+                plantVariant: .next(among: planted)
+            )
+            context.insert(goal)
+            planted.append(goal)
+        }
+        try context.save()
+        #expect(Set(planted.map(\.plantVariant)) == Set(PlantVariant.allCases))
+    }
+
+    @MainActor
+    @Test func renameAreaAndPriorityDoNotChangeVariant() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .branching)
+        context.insert(goal)
+        try context.save()
+
+        try PlanningStore.updateGoal(goal, title: "MCAT prep", area: .career, priority: .low, context: context)
+
+        #expect(goal.plantVariant == .branching)
+        #expect(goal.title == "MCAT prep")
+        #expect(goal.area == .career)
+        #expect(goal.priority == .low)
+    }
+
+    @MainActor
+    @Test func taskEditDoesNotChangeVariant() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .narrowLeaf)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal)
+        context.insert(goal)
+        context.insert(task)
+        try context.save()
+
+        try PlanningStore.updateTask(
+            task,
+            title: "Review flashcards",
+            durationMinutes: 15,
+            energyRequired: .low,
+            context: context
+        )
+
+        #expect(goal.plantVariant == .narrowLeaf)
+        #expect(goal.growthStage == .seedling)
+    }
+
+    @MainActor
+    @Test func focusSessionDoesNotChangeVariant() throws {
+        let context = try makeContext()
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .roundedLeaf)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal)
+        context.insert(goal)
+        context.insert(task)
+        try FocusSessionStore.commit(
+            result: FocusSessionResult(
+                task: task.asTaskItem,
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true
+            ),
+            taskWasFinished: true,
+            context: context
+        )
+
+        #expect(goal.plantVariant == .roundedLeaf)
+        #expect(goal.growthStage == .sprout)
+    }
+
+    @MainActor
+    @Test func plantIdentityDoesNotAffectRecommendations() throws {
+        let engine = RecommendationEngine()
+        let context = try makeContext()
+        let mcat = Goal(title: "MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
+        let portfolio = Goal(title: "Portfolio", area: .career, priority: .high, plantVariant: .roundedLeaf)
+        context.insert(mcat)
+        context.insert(portfolio)
+        let amino = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: mcat)
+        let page = GoalTask(title: "Update project description", durationMinutes: 30, energyRequired: .good, goal: portfolio)
+        context.insert(amino)
+        context.insert(page)
+        try context.save()
+
+        let first = engine.recommendations(
+            tasks: [amino, page].recommendationItems,
+            availableTime: .thirty,
+            energy: .good
+        )
+        mcat.plantVariant = .branching
+        portfolio.plantVariant = .narrowLeaf
+        let second = engine.recommendations(
+            tasks: [amino, page].recommendationItems,
+            availableTime: .thirty,
+            energy: .good
+        )
+        #expect(first.map(\.id) == second.map(\.id))
+        #expect(first.map(\.title) == ["Review amino acids", "Update project description"]
+            || first.map(\.title) == ["Update project description", "Review amino acids"])
+    }
+
+    @Test func rendererSignatureIsDeterministic() {
+        for variant in PlantVariant.allCases {
+            for stage in GardenGrowthStage.allCases {
+                let first = PlantDrawing.signature(variant: variant, stage: stage)
+                let second = PlantDrawing.signature(variant: variant, stage: stage)
+                #expect(first == second)
+                #expect(first == "\(variant.rawValue)-\(stage.rawValue)")
+                #expect(PlantArtwork.signature(variant: variant, stage: stage) == first)
+            }
+        }
+    }
+}
+
+struct PlantArtworkResolutionTests {
+    @Test func assetNamesFollowConventionForAllPairs() {
+        let expected: [(PlantVariant, GardenGrowthStage, String)] = [
+            (.broadLeaf, .seedling, "plant-broadLeaf-beginning"),
+            (.broadLeaf, .sprout, "plant-broadLeaf-establishing"),
+            (.broadLeaf, .young, "plant-broadLeaf-developing"),
+            (.broadLeaf, .growing, "plant-broadLeaf-flourishing"),
+            (.broadLeaf, .mature, "plant-broadLeaf-mature"),
+            (.narrowLeaf, .seedling, "plant-narrowLeaf-beginning"),
+            (.narrowLeaf, .mature, "plant-narrowLeaf-mature"),
+            (.branching, .young, "plant-branching-developing"),
+            (.roundedLeaf, .growing, "plant-roundedLeaf-flourishing"),
+            (.roundedLeaf, .mature, "plant-roundedLeaf-mature")
+        ]
+        for (variant, stage, name) in expected {
+            #expect(PlantArtwork.assetName(variant: variant, stage: stage) == name)
+        }
+
+        let allNames = Set(
+            PlantVariant.allCases.flatMap { variant in
+                GardenGrowthStage.allCases.map { PlantArtwork.assetName(variant: variant, stage: $0) }
+            }
+        )
+        #expect(allNames.count == PlantVariant.allCases.count * GardenGrowthStage.allCases.count)
+    }
+
+    @Test func missingAssetsFallBackToCanvas() {
+        PlantArtwork.assetAvailability = { _ in false }
+        defer { PlantArtwork.resetTestOverrides() }
+
+        for variant in PlantVariant.allCases {
+            for stage in GardenGrowthStage.allCases {
+                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .canvas)
+            }
+        }
+    }
+
+    @Test func presentAssetsResolveToNamedSource() {
+        let available = Set([
+            "plant-broadLeaf-beginning",
+            "plant-roundedLeaf-mature"
+        ])
+        PlantArtwork.assetAvailability = { available.contains($0) }
+        defer { PlantArtwork.resetTestOverrides() }
+
+        #expect(
+            PlantArtwork.resolve(variant: .broadLeaf, stage: .seedling)
+                == .asset("plant-broadLeaf-beginning")
+        )
+        #expect(
+            PlantArtwork.resolve(variant: .roundedLeaf, stage: .mature)
+                == .asset("plant-roundedLeaf-mature")
+        )
+        #expect(PlantArtwork.resolve(variant: .narrowLeaf, stage: .sprout) == .canvas)
+        #expect(PlantArtwork.resolve(variant: .branching, stage: .growing) == .canvas)
+    }
+
+    @Test func resolutionIsDeterministic() {
+        PlantArtwork.assetAvailability = { $0.hasSuffix("-mature") }
+        defer { PlantArtwork.resetTestOverrides() }
+
+        for variant in PlantVariant.allCases {
+            for stage in GardenGrowthStage.allCases {
+                let first = PlantArtwork.resolve(variant: variant, stage: stage)
+                let second = PlantArtwork.resolve(variant: variant, stage: stage)
+                #expect(first == second)
+            }
+        }
+    }
+
+    @Test func noCatalogAssetsMeansFullCanvasFallback() {
+        // Production catalog currently ships no plant-* images.
+        PlantArtwork.resetTestOverrides()
+        for variant in PlantVariant.allCases {
+            for stage in GardenGrowthStage.allCases {
+                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .canvas)
+            }
+        }
+    }
+}
+
+struct GardenEvolutionPersistenceTests {
+    @MainActor
+    @Test func existingGoalLoadsDefaultVariantAndStaysStable() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-m5-\(UUID().uuidString).store")
+        let goalID: UUID
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+            context.insert(goal)
+            let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal)
+            context.insert(task)
+            try context.save()
+            #expect(goal.plantVariant == .broadLeaf)
+
+            try PlanningStore.updateGoal(goal, title: "MCAT prep", area: .career, priority: .normal, context: context)
+            try PlanningStore.updateTask(
+                task,
+                title: "Review flashcards",
+                durationMinutes: 15,
+                energyRequired: .low,
+                context: context
+            )
+            try FocusSessionStore.commit(
+                result: FocusSessionResult(
+                    task: task.asTaskItem,
+                    plannedDurationSeconds: 15 * 60,
+                    focusedDurationSeconds: 15 * 60,
+                    endedNaturally: true
+                ),
+                taskWasFinished: false,
+                context: context
+            )
+            goalID = goal.id
+            #expect(goal.plantVariant == .broadLeaf)
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        let tasks = try context.fetch(FetchDescriptor<GoalTask>())
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+
+        #expect(goals.count == 1)
+        #expect(goals.first?.id == goalID)
+        #expect(goals.first?.title == "MCAT prep")
+        #expect(goals.first?.area == .career)
+        #expect(goals.first?.plantVariant == .broadLeaf)
+        #expect(tasks.count == 1)
+        #expect(tasks.first?.title == "Review flashcards")
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.focusedDurationSeconds == 900.0)
+    }
+
+    @MainActor
+    @Test func assignedVariantPersistsAcrossRelaunch() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-m5-variant-\(UUID().uuidString).store")
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            context.insert(Goal(title: "Build Next", area: .creative, priority: .normal, plantVariant: .branching))
+            try context.save()
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.plantVariant == .branching)
+    }
+}
+
+struct GardenGrowthDerivationTests {
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try NextPersistence.makeInMemoryContainer())
+    }
+
+    @MainActor
+    private func goal(
+        in context: ModelContext,
+        minutes: [Double],
+        finished: Bool = false
+    ) throws -> Goal {
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .narrowLeaf)
+        context.insert(goal)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: goal)
+        context.insert(task)
+        for value in minutes {
+            try FocusSessionStore.commit(
+                result: FocusSessionResult(
+                    task: task.asTaskItem,
+                    plannedDurationSeconds: value * 60,
+                    focusedDurationSeconds: value * 60,
+                    endedNaturally: true
+                ),
+                taskWasFinished: finished,
+                context: context
+            )
+        }
+        return goal
+    }
+
+    @MainActor
+    @Test func thresholdsMatchExistingStages() throws {
+        #expect(try goal(in: makeContext(), minutes: []).growthStage == .seedling)
+        #expect(try goal(in: makeContext(), minutes: [29]).growthStage == .seedling)
+        #expect(try goal(in: makeContext(), minutes: [30]).growthStage == .sprout)
+        #expect(try goal(in: makeContext(), minutes: [119]).growthStage == .sprout)
+        #expect(try goal(in: makeContext(), minutes: [120]).growthStage == .young)
+        #expect(try goal(in: makeContext(), minutes: [299]).growthStage == .young)
+        #expect(try goal(in: makeContext(), minutes: [300]).growthStage == .growing)
+        #expect(try goal(in: makeContext(), minutes: [599]).growthStage == .growing)
+        #expect(try goal(in: makeContext(), minutes: [600]).growthStage == .mature)
+    }
+
+    @MainActor
+    @Test func multipleSessionsSumAndBothAnswersCount() throws {
+        let context = try makeContext()
+        let planted = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
+        context.insert(planted)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: planted)
+        context.insert(task)
+        try FocusSessionStore.commit(
+            result: FocusSessionResult(
+                task: task.asTaskItem,
+                plannedDurationSeconds: 20 * 60,
+                focusedDurationSeconds: 20 * 60,
+                endedNaturally: false
+            ),
+            taskWasFinished: false,
+            context: context
+        )
+        try FocusSessionStore.commit(
+            result: FocusSessionResult(
+                task: task.asTaskItem,
+                plannedDurationSeconds: 15 * 60,
+                focusedDurationSeconds: 15 * 60,
+                endedNaturally: true
+            ),
+            taskWasFinished: true,
+            context: context
+        )
+        #expect(planted.totalFocusedDuration == 35 * 60)
+        #expect(planted.growthStage == .sprout)
+        #expect(planted.plantVariant == .broadLeaf)
+    }
+
+    @MainActor
+    @Test func deletedTaskHistoryStillGrowsGoal() throws {
+        let context = try makeContext()
+        let planted = try goal(in: context, minutes: [30])
+        let variant = planted.plantVariant
+        let task = planted.tasks.first
+        #expect(task != nil)
+        if let task {
+            try PlanningStore.deleteTask(task, context: context)
+        }
+        #expect(planted.totalFocusedDuration == 30 * 60)
+        #expect(planted.growthStage == .sprout)
+        #expect(planted.plantVariant == variant)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+    }
+
+    @MainActor
+    @Test func editingGoalOrTaskDoesNotChangeStage() throws {
+        let context = try makeContext()
+        let planted = try goal(in: context, minutes: [120])
+        try PlanningStore.updateGoal(planted, title: "MCAT", area: .career, priority: .low, context: context)
+        if let task = planted.tasks.first {
+            try PlanningStore.updateTask(
+                task,
+                title: "Passage",
+                durationMinutes: 45,
+                energyRequired: .ready,
+                context: context
+            )
+        }
+        #expect(planted.growthStage == .young)
+        #expect(planted.totalFocusedDuration == 120 * 60)
+        #expect(planted.plantVariant == .narrowLeaf)
+    }
+}
+
+struct GardenAcknowledgementTests {
+    @Test func genericCopyWhenStageDoesNotChange() {
+        #expect(
+            GardenAcknowledgement.message(
+                goalTitle: "Study for MCAT",
+                previousStage: .seedling,
+                nextStage: .seedling
+            ) == "This session helped your Study for MCAT plant grow."
+        )
+    }
+
+    @Test func newGrowthCopyWhenStageCrosses() {
+        #expect(
+            GardenAcknowledgement.message(
+                goalTitle: "Study for MCAT",
+                previousStage: .seedling,
+                nextStage: .sprout
+            ) == "Your Study for MCAT plant has new growth."
+        )
+    }
+
+    @Test func acknowledgementDoesNotMutateSessionSemantics() {
+        var completion = SessionCompletionState()
+        completion.select(.notCompleted)
+        let message = GardenAcknowledgement.message(
+            goalTitle: "Study for MCAT",
+            previousStage: .young,
+            nextStage: .young
+        )
+        #expect(completion.taskCompletion == .notCompleted)
+        #expect(message.contains("Study for MCAT"))
     }
 }
 

@@ -137,8 +137,16 @@ struct OnboardingState: Equatable {
         guard !didCommit else { return }
         didCommit = true
 
+        var planted: [Goal] = []
         for pending in pendingGoals {
-            context.insert(Goal(title: pending.title, area: pending.area, priority: .normal))
+            let goal = Goal(
+                title: pending.title,
+                area: pending.area,
+                priority: .normal,
+                plantVariant: .next(among: planted)
+            )
+            context.insert(goal)
+            planted.append(goal)
         }
         try? context.save()
         OnboardingPreference.markCompleted(in: defaults)

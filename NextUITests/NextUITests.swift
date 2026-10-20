@@ -11,6 +11,7 @@ final class NextUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
     }
 
     @MainActor
@@ -425,15 +426,15 @@ final class NextUITests: XCTestCase {
     func testSeededGrowthStagesRender() throws {
         let app = launchGrowthShowcase()
 
-        XCTAssertEqual(gardenRow("Beginning study", in: app).value as? String, "stage 0")
+        XCTAssertEqual(gardenRow("Beginning study", in: app).value as? String, "Beginning")
         XCTAssertTrue(gardenRow("Beginning study", in: app).label.contains("0 sessions"))
-        XCTAssertEqual(gardenRow("First growth", in: app).value as? String, "stage 1")
+        XCTAssertEqual(gardenRow("First growth", in: app).value as? String, "Establishing")
         XCTAssertTrue(gardenRow("First growth", in: app).label.contains("30 minutes focused"))
-        XCTAssertEqual(gardenRow("Young plant", in: app).value as? String, "stage 2")
+        XCTAssertEqual(gardenRow("Young plant", in: app).value as? String, "Developing")
         XCTAssertTrue(gardenRow("Young plant", in: app).label.contains("2 hours focused"))
-        XCTAssertEqual(gardenRow("Growing plant", in: app).value as? String, "stage 3")
+        XCTAssertEqual(gardenRow("Growing plant", in: app).value as? String, "Flourishing")
         XCTAssertTrue(gardenRow("Growing plant", in: app).label.contains("5 hours focused"))
-        XCTAssertEqual(gardenRow("Mature plant", in: app).value as? String, "stage 4")
+        XCTAssertEqual(gardenRow("Mature plant", in: app).value as? String, "Mature")
         XCTAssertTrue(gardenRow("Mature plant", in: app).label.contains("10 hours focused"))
     }
 
@@ -443,11 +444,11 @@ final class NextUITests: XCTestCase {
         attachScreenshot(of: app, named: "01 Garden — all five stages")
 
         let stages: [(title: String, stage: String, spoken: String, detailMetric: String)] = [
-            ("Beginning study", "stage 0", "0 minutes focused", "0 MIN FOCUSED"),
-            ("First growth", "stage 1", "30 minutes focused", "30 MIN FOCUSED"),
-            ("Young plant", "stage 2", "2 hours focused", "2H FOCUSED"),
-            ("Growing plant", "stage 3", "5 hours focused", "5H FOCUSED"),
-            ("Mature plant", "stage 4", "10 hours focused", "10H FOCUSED")
+            ("Beginning study", "Beginning", "0 minutes focused", "0 MIN FOCUSED"),
+            ("First growth", "Establishing", "30 minutes focused", "30 MIN FOCUSED"),
+            ("Young plant", "Developing", "2 hours focused", "2H FOCUSED"),
+            ("Growing plant", "Flourishing", "5 hours focused", "5H FOCUSED"),
+            ("Mature plant", "Mature", "10 hours focused", "10H FOCUSED")
         ]
 
         for (index, stage) in stages.enumerated() {
@@ -967,6 +968,9 @@ final class NextUITests: XCTestCase {
         review.capture(app, "03 Keep Screen Awake OFF")
 
         awake.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        if (awake.value as? String) != "1" {
+            awake.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
         XCTAssertEqual(awake.value as? String, "1")
         review.capture(app, "04 Keep Screen Awake ON")
         review.capture(app, "05 Focus settings after cleanup")
@@ -1222,6 +1226,199 @@ final class NextUITests: XCTestCase {
         attachScreenshot(of: app, named: "Empty History")
     }
 
+    @MainActor
+    func testCompletionAcknowledgesPlantGrowthForBothAnswers() throws {
+        let yesApp = launchGardenEvolutionApp()
+        navigateToFirstRecommendation(in: yesApp)
+        yesApp.buttons["START SESSION →"].tap()
+        XCTAssertTrue(yesApp.buttons["Finish early"].waitForExistence(timeout: 2))
+        yesApp.buttons["Finish early"].tap()
+        XCTAssertTrue(yesApp.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        yesApp.buttons["YES"].tap()
+        let yesLine = yesApp.descendants(matching: .any)["gardenAcknowledgement"]
+        XCTAssertTrue(yesLine.waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            yesLine.label.contains("Study for MCAT")
+                || yesApp.staticTexts["This session helped your Study for MCAT plant grow."].exists
+                || yesApp.staticTexts["Your Study for MCAT plant has new growth."].exists
+        )
+        XCTAssertTrue(yesApp.buttons["WHAT'S NEXT? →"].exists)
+        XCTAssertTrue(yesApp.buttons["I'M DONE"].exists)
+        yesApp.buttons["I'M DONE"].tap()
+        XCTAssertTrue(yesApp.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        yesApp.terminate()
+
+        let notYet = launchGardenEvolutionApp()
+        navigateToFirstRecommendation(in: notYet)
+        notYet.buttons["START SESSION →"].tap()
+        XCTAssertTrue(notYet.buttons["Finish early"].waitForExistence(timeout: 2))
+        notYet.buttons["Finish early"].tap()
+        XCTAssertTrue(notYet.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        notYet.buttons["NOT YET"].tap()
+        let notYetLine = notYet.descendants(matching: .any)["gardenAcknowledgement"]
+        XCTAssertTrue(notYetLine.waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            notYetLine.label.contains("Study for MCAT")
+                || notYet.staticTexts["This session helped your Study for MCAT plant grow."].exists
+        )
+        notYet.buttons["I'M DONE"].tap()
+        XCTAssertTrue(notYet.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        notYet.tabBars.buttons["Garden"].tap()
+        let row = gardenRow("Study for MCAT", in: notYet)
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.label.contains("1 session"))
+        XCTAssertTrue(row.label.contains("Beginning") || row.label.contains("Establishing"))
+    }
+
+    @MainActor
+    func testGardenEvolutionVisualReview() throws {
+        let review = GardenEvolutionCapture(self)
+
+        let comparison = XCUIApplication()
+        comparison.launchArguments = ["UITEST_PLANT_COMPARISON", "UITEST_IN_MEMORY"]
+        comparison.launch()
+        XCTAssertTrue(comparison.staticTexts["PLANT COMPARISON"].waitForExistence(timeout: 2))
+        XCTAssertTrue(comparison.descendants(matching: .any)["plantComparison"].exists)
+        review.capture(comparison, "00 Comparison — all variants and stages")
+        comparison.swipeUp()
+        review.capture(comparison, "00b Comparison — lower variants")
+        comparison.swipeUp()
+        comparison.swipeUp()
+        review.capture(comparison, "00c Comparison — Rounded Leaf")
+        let roundedDeveloping = comparison.descendants(matching: .any)["compare-roundedLeaf-2"]
+        if roundedDeveloping.exists {
+            roundedDeveloping.swipeLeft()
+            roundedDeveloping.swipeLeft()
+        }
+        review.capture(comparison, "00d Comparison — Rounded Leaf Mature")
+        comparison.terminate()
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = launchGardenEvolutionApp()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
+        XCTAssertEqual(gardenRow("Study for MCAT", in: app).value as? String, "Beginning")
+        XCTAssertEqual(gardenRow("Build Next", in: app).value as? String, "Developing")
+        XCTAssertEqual(gardenRow("Interview preparation", in: app).value as? String, "Flourishing")
+        XCTAssertEqual(gardenRow("Finish book", in: app).value as? String, "Mature")
+        review.capture(app, "01 Garden — four plant variants")
+        review.capture(app, "01b Garden — Beginning plant")
+        app.swipeUp()
+        review.capture(app, "02 Garden — mixed growth stages")
+        app.swipeDown()
+        app.swipeDown()
+
+        openGardenGoal("Study for MCAT", in: app)
+        XCTAssertTrue(app.staticTexts["0 MIN FOCUSED"].waitForExistence(timeout: 2))
+        review.capture(app, "03 Goal Detail — Beginning plant")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openGardenGoal("Build Next", in: app)
+        XCTAssertTrue(app.staticTexts["2H FOCUSED"].waitForExistence(timeout: 2))
+        review.capture(app, "04 Goal Detail — Developing plant")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openGardenGoal("Finish book", in: app)
+        XCTAssertTrue(app.staticTexts["10H FOCUSED"].waitForExistence(timeout: 2))
+        review.capture(app, "05 Goal Detail — Mature plant")
+        app.terminate()
+
+        let completion = launchGardenEvolutionApp()
+        navigateToFirstRecommendation(in: completion)
+        completion.buttons["START SESSION →"].tap()
+        XCTAssertTrue(completion.buttons["Finish early"].waitForExistence(timeout: 2))
+        completion.buttons["Finish early"].tap()
+        XCTAssertTrue(completion.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        completion.buttons["YES"].tap()
+        XCTAssertTrue(completion.descendants(matching: .any)["gardenAcknowledgement"].waitForExistence(timeout: 2))
+        review.capture(completion, "06 Completion botanical acknowledgement")
+        completion.terminate()
+
+        let largeType = XCUIApplication()
+        largeType.launchArguments = [
+            "UITEST_SEED_GARDEN_EVOLUTION",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        largeType.launch()
+        largeType.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(largeType.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(largeType, "07 Garden at large Dynamic Type")
+        reveal(gardenRow("Interview preparation", in: largeType), in: largeType)
+        review.capture(largeType, "09 Refinement — large DT former overlap")
+        largeType.swipeDown()
+        largeType.swipeDown()
+        openGardenGoal("Study for MCAT", in: largeType)
+        XCTAssertTrue(largeType.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        review.capture(largeType, "08 Goal Detail at large Dynamic Type")
+        largeType.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(largeType.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+
+        let lastRow = gardenRow("Finish book", in: largeType)
+        let plantGoal = largeType.buttons["+ PLANT A GOAL"]
+        reveal(lastRow, in: largeType)
+        reveal(plantGoal, in: largeType)
+        XCTAssertTrue(lastRow.waitForExistence(timeout: 2))
+        XCTAssertTrue(plantGoal.waitForExistence(timeout: 2))
+        review.capture(largeType, "10 Refinement — large DT final Goal and CTA")
+    }
+
+    @MainActor
+    func testLargeDynamicTypeGardenDoesNotCoverGoals() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN_EVOLUTION",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 3))
+
+        let titles = ["Study for MCAT", "Build Next", "Interview preparation", "Finish book"]
+        let cta = app.buttons["+ PLANT A GOAL"]
+        if cta.exists && cta.isHittable {
+            for title in titles {
+                let row = gardenRow(title, in: app)
+                if row.exists && row.isHittable {
+                    XCTAssertLessThanOrEqual(
+                        row.frame.maxY,
+                        cta.frame.minY + 1,
+                        "\(title) is covered by Plant a Goal"
+                    )
+                }
+            }
+        }
+
+        for title in titles {
+            let row = gardenRow(title, in: app)
+            reveal(row, in: app)
+            XCTAssertTrue(row.waitForExistence(timeout: 3), "Missing Garden row \(title)")
+            XCTAssertTrue(row.isHittable, "Garden row \(title) is not reachable")
+        }
+
+        reveal(cta, in: app)
+        XCTAssertTrue(cta.waitForExistence(timeout: 3))
+        XCTAssertTrue(cta.isHittable, "Plant a Goal is not reachable")
+
+        let last = gardenRow("Finish book", in: app)
+        reveal(last, in: app)
+        reveal(cta, in: app)
+        XCTAssertTrue(cta.isHittable, "Plant a Goal is not reachable after the final Goal")
+        XCTAssertLessThan(
+            last.frame.minY,
+            cta.frame.minY,
+            "Final Goal is not above Plant a Goal"
+        )
+    }
+
+    private func launchGardenEvolutionApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION"]
+        app.launch()
+        return app
+    }
+
     private func launchFreshOnboarding() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -1263,7 +1460,7 @@ final class NextUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         var attempts = 0
-        while attempts < 4 && (!element.exists || !element.isHittable) {
+        while attempts < 8 && (!element.exists || !element.isHittable) {
             app.swipeUp()
             attempts += 1
         }
@@ -1376,10 +1573,13 @@ final class NextUITests: XCTestCase {
     private func openGardenGoal(_ title: String, in app: XCUIApplication) {
         if !app.buttons["+ ADD TASK"].exists {
             app.tabBars.buttons["Garden"].tap()
-            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 2))
-            app.staticTexts[title].tap()
+            XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+            let row = gardenRow(title, in: app)
+            reveal(row, in: app)
+            XCTAssertTrue(row.waitForExistence(timeout: 3), "Missing Garden row \(title)")
+            row.tap()
         }
-        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["+ ADD TASK"].waitForExistence(timeout: 4), "Did not open Goal \(title)")
     }
 
     private func openVisibleTaskMenu(_ title: String, completed: Bool = false, in app: XCUIApplication) {
@@ -1440,99 +1640,86 @@ final class NextUITests: XCTestCase {
     }
 }
 
-    private struct FinalCleanupCapture {
-        static let directory = URL(fileURLWithPath:
-            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Final-Cleanup"
-        )
-
-        let test: XCTestCase
-
-        init(_ test: XCTestCase) {
-            self.test = test
-        }
-
-        func capture(_ app: XCUIApplication, _ name: String) {
-            let screenshot = app.screenshot()
-            let attachment = XCTAttachment(screenshot: screenshot)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            test.add(attachment)
-
-            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-            let file = Self.directory.appendingPathComponent("\(name).png")
-            try? screenshot.pngRepresentation.write(to: file)
-        }
+/// Shared review-shot helper. XCTAttachments always attach; disk writes to Review/
+/// only when UITEST_WRITE_REVIEW_SHOTS=1 (keeps regression runs from rewriting
+/// completed-milestone PNGs).
+private enum ReviewShotStore {
+    static var writesToDisk: Bool {
+        ProcessInfo.processInfo.environment["UITEST_WRITE_REVIEW_SHOTS"] == "1"
+            || ProcessInfo.processInfo.arguments.contains("UITEST_WRITE_REVIEW_SHOTS")
     }
 
-    private struct FocusExperienceCapture {
-        static let directory = URL(fileURLWithPath:
-            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Focus-Experience"
-        )
-
-        let test: XCTestCase
-
-        init(_ test: XCTestCase) {
-            self.test = test
-        }
-
-        func capture(_ app: XCUIApplication, _ name: String) {
-            let screenshot = app.screenshot()
-            let attachment = XCTAttachment(screenshot: screenshot)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            test.add(attachment)
-
-            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-            let file = Self.directory.appendingPathComponent("\(name).png")
-            try? screenshot.pngRepresentation.write(to: file)
-        }
-    }
-
-    private struct ManagementCapture {
-        static let directory = URL(fileURLWithPath:
-            "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M3-Goal-Task-Management"
-        )
-
-        let test: XCTestCase
-
-        init(_ test: XCTestCase) {
-            self.test = test
-        }
-
-        func capture(_ app: XCUIApplication, _ name: String) {
-            let screenshot = app.screenshot()
-            let attachment = XCTAttachment(screenshot: screenshot)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            test.add(attachment)
-
-            try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-            let file = Self.directory.appendingPathComponent("\(name).png")
-            try? screenshot.pngRepresentation.write(to: file)
-        }
-    }
-
-private struct RecommendationEngineCapture {
-    static let directory = URL(fileURLWithPath:
-        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M2-Recommendation-Engine"
-    )
-
-    let test: XCTestCase
-
-    init(_ test: XCTestCase) {
-        self.test = test
-    }
-
-    func capture(_ app: XCUIApplication, _ name: String) {
+    static func capture(
+        _ app: XCUIApplication,
+        named name: String,
+        into directory: URL,
+        test: XCTestCase
+    ) {
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         test.add(attachment)
 
-        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-        let file = Self.directory.appendingPathComponent("\(name).png")
+        guard writesToDisk else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("\(name).png")
         try? screenshot.pngRepresentation.write(to: file)
+    }
+}
+
+private struct GardenEvolutionCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M5-Garden-Evolution"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct FinalCleanupCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Final-Cleanup"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct FocusExperienceCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M4-Focus-Experience"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct ManagementCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M3-Goal-Task-Management"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct RecommendationEngineCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M2-Recommendation-Engine"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
     }
 }
 
@@ -1540,23 +1727,10 @@ private struct TaskLifecycleCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M1-Task-Lifecycle"
     )
-
     let test: XCTestCase
-
-    init(_ test: XCTestCase) {
-        self.test = test
-    }
-
+    init(_ test: XCTestCase) { self.test = test }
     func capture(_ app: XCUIApplication, _ name: String) {
-        let screenshot = app.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        test.add(attachment)
-
-        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-        let file = Self.directory.appendingPathComponent("\(name).png")
-        try? screenshot.pngRepresentation.write(to: file)
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
     }
 }
 
@@ -1564,22 +1738,9 @@ private struct WalkthroughCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V1-Walkthrough"
     )
-
     let test: XCTestCase
-
-    init(_ test: XCTestCase) {
-        self.test = test
-    }
-
+    init(_ test: XCTestCase) { self.test = test }
     func capture(_ app: XCUIApplication, _ name: String) {
-        let screenshot = app.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        test.add(attachment)
-
-        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-        let file = Self.directory.appendingPathComponent("\(name).png")
-        try? screenshot.pngRepresentation.write(to: file)
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
     }
 }

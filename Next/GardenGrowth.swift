@@ -13,6 +13,16 @@ enum GardenGrowthStage: Int, CaseIterable, Equatable {
     case young = 2
     case growing = 3
     case mature = 4
+
+    var spokenName: String {
+        switch self {
+        case .seedling: "Beginning"
+        case .sprout: "Establishing"
+        case .young: "Developing"
+        case .growing: "Flourishing"
+        case .mature: "Mature"
+        }
+    }
 }
 
 enum GardenGrowth {

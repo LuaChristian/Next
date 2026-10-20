@@ -32,7 +32,9 @@ struct NextApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if hasCompletedOnboarding {
+                if ProcessInfo.processInfo.arguments.contains(NextPersistence.plantComparisonArgument) {
+                    PlantComparisonView()
+                } else if hasCompletedOnboarding {
                     ContentView()
                 } else {
                     OnboardingFlow {

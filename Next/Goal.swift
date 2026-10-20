@@ -90,6 +90,8 @@ final class Goal {
     var area: GoalArea
     var priority: GoalPriority
     var createdAt: Date
+    /// Additive V2-M5 identity. Existing rows migrate to broadLeaf via the stored default.
+    var plantVariantRaw: String = "broadLeaf"
 
     @Relationship(deleteRule: .cascade, inverse: \GoalTask.goal)
     var tasks: [GoalTask]
@@ -104,6 +106,7 @@ final class Goal {
         area: GoalArea,
         priority: GoalPriority,
         createdAt: Date = Date(),
+        plantVariant: PlantVariant = .broadLeaf,
         tasks: [GoalTask] = [],
         focusSessions: [FocusSession] = []
     ) {
@@ -112,6 +115,7 @@ final class Goal {
         self.area = area
         self.priority = priority
         self.createdAt = createdAt
+        self.plantVariantRaw = plantVariant.rawValue
         self.tasks = tasks
         self.focusSessions = focusSessions
     }
@@ -161,7 +165,14 @@ final class Goal {
     }
 
     var progressAccessibilityLabel: String {
-        "\(title). \(area.title). \(GardenMetrics.sessionCountSpoken(sessionCount)). \(GardenMetrics.focusedDurationSpoken(seconds: totalFocusedDuration))"
+        "\(title) plant. \(growthStage.spokenName). \(GardenMetrics.focusedDurationSpoken(seconds: totalFocusedDuration)). \(area.title). \(GardenMetrics.sessionCountSpoken(sessionCount))"
+    }
+}
+
+extension Goal {
+    var plantVariant: PlantVariant {
+        get { PlantVariant(rawValue: plantVariantRaw) ?? .broadLeaf }
+        set { plantVariantRaw = newValue.rawValue }
     }
 }
 
