@@ -45,12 +45,12 @@ enum EnergyLevel: String, CaseIterable, Identifiable, Codable {
 struct HomeView: View {
     @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @AppStorage(AppearancePreference.key) private var appearanceRaw = AppearancePreference.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
     @State private var recommendationInput: RecommendationInput?
-    @State private var showingPreferences = false
+    @State private var greeting = HomeGreeting.text()
 
     private var canProceed: Bool {
         selectedTime != nil && selectedEnergy != nil
@@ -83,38 +83,31 @@ struct HomeView: View {
                 hasAnyTasks: !persistedTasks.isEmpty
             )
         }
-        .sheet(isPresented: $showingPreferences) {
-            PreferencesView(appearanceRaw: $appearanceRaw)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(NextTheme.canvas)
+        .onAppear { refreshGreeting() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            refreshGreeting()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            refreshGreeting()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name.NSSystemTimeZoneDidChange)) { _ in
+            refreshGreeting()
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 28) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("NEXT")
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(3.2)
-                    .foregroundStyle(NextTheme.secondaryText)
+            Text("NEXT")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(3.2)
+                .foregroundStyle(NextTheme.secondaryText)
 
-                Spacer(minLength: 12)
-
-                Button("PREFERENCES") {
-                    showingPreferences = true
-                }
-                .nextFont(11, weight: .semibold, relativeTo: .caption2)
-                .tracking(1.6)
-                .foregroundStyle(NextTheme.botanicalAccent)
-                .accessibilityIdentifier("appearanceButton")
-                .accessibilityHint("Appearance and optional daily reminders")
-            }
-
-            Text("Good afternoon.")
+            Text(greeting)
                 .nextFont(34, relativeTo: .largeTitle)
                 .foregroundStyle(NextTheme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("homeGreeting")
         }
     }
 
@@ -169,6 +162,10 @@ struct HomeView: View {
         } else {
             HStack(spacing: 8) { content() }
         }
+    }
+
+    private func refreshGreeting() {
+        greeting = HomeGreeting.text()
     }
 }
 

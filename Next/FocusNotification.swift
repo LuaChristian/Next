@@ -58,25 +58,42 @@ final class FocusNotificationCoordinator {
     private(set) var scheduled: FocusCompletionNotification?
     private(set) var authorizationRequests = 0
 
+    /// Serializes overlapping syncs so a late schedule cannot resurrect a cancel.
+    private var syncChain: Task<Void, Never>?
+
     init(
         scheduler: FocusNotificationScheduling = SystemFocusNotificationScheduler(),
-        skipsSystemPrompt: Bool = ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("UITEST_") }
+        skipsSystemPrompt: Bool = NextUITestLaunch.isActive
     ) {
         self.scheduler = scheduler
         self.skipsSystemPrompt = skipsSystemPrompt
     }
 
     func sync(timer: FocusSessionTimer, taskTitle: String, at now: Date) async {
-        if let fireDate = timer.expectedNaturalCompletion(at: now) {
-            await scheduleIfAllowed(taskTitle: taskTitle, fireDate: fireDate)
-        } else {
-            cancel()
+        let previous = syncChain
+        let work = Task { @MainActor in
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            await self.performSync(timer: timer, taskTitle: taskTitle, at: now)
         }
+        syncChain = work
+        await work.value
     }
 
     func cancel() {
+        syncChain?.cancel()
+        syncChain = nil
         scheduler.cancelCompletionNotification()
         scheduled = nil
+    }
+
+    private func performSync(timer: FocusSessionTimer, taskTitle: String, at now: Date) async {
+        if let fireDate = timer.expectedNaturalCompletion(at: now) {
+            await scheduleIfAllowed(taskTitle: taskTitle, fireDate: fireDate)
+        } else {
+            scheduler.cancelCompletionNotification()
+            scheduled = nil
+        }
     }
 
     private func scheduleIfAllowed(taskTitle: String, fireDate: Date) async {
@@ -87,13 +104,21 @@ final class FocusNotificationCoordinator {
             status = await scheduler.authorizationStatus()
         }
 
+        guard !Task.isCancelled else { return }
+
         guard status == .authorized || status == .provisional else {
-            cancel()
+            scheduler.cancelCompletionNotification()
+            scheduled = nil
             return
         }
 
         let notification = FocusCompletionNotification(taskTitle: taskTitle, fireDate: fireDate)
         await scheduler.schedule(notification)
+        guard !Task.isCancelled else {
+            scheduler.cancelCompletionNotification()
+            scheduled = nil
+            return
+        }
         scheduled = notification
     }
 }

@@ -2241,6 +2241,7 @@ struct GoalTaskManagementTests {
 final class MockFocusNotificationScheduler: FocusNotificationScheduling {
     var status: UNAuthorizationStatus = .authorized
     var grantOnRequest = true
+    var authorizationDelayNanoseconds: UInt64 = 0
     private(set) var scheduled: [FocusCompletionNotification] = []
     private(set) var cancelCount = 0
     private(set) var requestCount = 0
@@ -2249,6 +2250,9 @@ final class MockFocusNotificationScheduler: FocusNotificationScheduling {
 
     func requestAuthorization() async -> Bool {
         requestCount += 1
+        if authorizationDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: authorizationDelayNanoseconds)
+        }
         if grantOnRequest { status = .authorized }
         return grantOnRequest
     }
@@ -2411,6 +2415,26 @@ struct FocusExperienceTests {
     }
 
     @MainActor
+    @Test func overlappingPauseAfterScheduleDoesNotResurrectCompletionNotification() async {
+        let scheduler = MockFocusNotificationScheduler()
+        scheduler.status = .notDetermined
+        scheduler.grantOnRequest = true
+        scheduler.authorizationDelayNanoseconds = 80_000_000
+        let coordinator = FocusNotificationCoordinator(scheduler: scheduler, skipsSystemPrompt: false)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+
+        async let scheduleFirst: Void = coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        try? await Task.sleep(for: .milliseconds(10))
+        timer.pause(at: start.addingTimeInterval(60))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start.addingTimeInterval(60))
+        await scheduleFirst
+
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(coordinator.scheduled == nil)
+    }
+
+    @MainActor
     @Test func preferenceChangeDoesNotMutateDomainData() throws {
         let context = ModelContext(try NextPersistence.makeInMemoryContainer())
         let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
@@ -2522,8 +2546,10 @@ struct AppearancePreferenceTests {
         #expect(contrast(NextTheme.Palette.lightSecondary, NextTheme.Palette.lightCanvas) >= 4.5)
         #expect(contrast(NextTheme.Palette.darkPrimary, NextTheme.Palette.darkCanvas) >= 4.5)
         #expect(contrast(NextTheme.Palette.darkSecondary, NextTheme.Palette.darkCanvas) >= 4.5)
-        #expect(contrast(NextTheme.Palette.lightBotanical, NextTheme.Palette.lightCanvas) >= 3.0)
-        #expect(contrast(NextTheme.Palette.darkBotanical, NextTheme.Palette.darkCanvas) >= 3.0)
+        #expect(contrast(NextTheme.Palette.lightInteractive, NextTheme.Palette.lightCanvas) >= 3.0)
+        #expect(contrast(NextTheme.Palette.darkInteractive, NextTheme.Palette.darkCanvas) >= 3.0)
+        #expect(contrast(NextTheme.Palette.lightBotanicalInk, NextTheme.Palette.lightCanvas) >= 3.0)
+        #expect(contrast(NextTheme.Palette.darkBotanicalInk, NextTheme.Palette.darkCanvas) >= 3.0)
     }
 }
 
@@ -3325,4 +3351,161 @@ struct SmartRemindersTests {
         #expect(DailyReminderCoordinator.hasFocusedToday(context: context, now: day(2026, 3, 8, hour: 12), calendar: calendar))
     }
 }
+
+// MARK: - V2-M9 Home Greeting + Theme Separation
+
+struct HomeGreetingTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private func date(hour: Int, minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: hour, minute: minute))!
+    }
+
+    @Test func morningBoundaryUsesLocalHour() {
+        #expect(HomeDayPart.resolve(now: date(hour: 5), calendar: calendar) == .morning)
+        #expect(HomeDayPart.resolve(now: date(hour: 11, minute: 59), calendar: calendar) == .morning)
+        #expect(HomeGreeting.text(now: date(hour: 8), calendar: calendar) == "Good morning.")
+    }
+
+    @Test func noonBoundaryIsAfternoon() {
+        #expect(HomeDayPart.resolve(now: date(hour: 12), calendar: calendar) == .afternoon)
+        #expect(HomeDayPart.resolve(now: date(hour: 16, minute: 59), calendar: calendar) == .afternoon)
+        #expect(HomeGreeting.text(now: date(hour: 14), calendar: calendar) == "Good afternoon.")
+    }
+
+    @Test func eveningSpansOvernight() {
+        #expect(HomeDayPart.resolve(now: date(hour: 17), calendar: calendar) == .evening)
+        #expect(HomeDayPart.resolve(now: date(hour: 4, minute: 59), calendar: calendar) == .evening)
+        #expect(HomeGreeting.text(now: date(hour: 21), calendar: calendar) == "Good evening.")
+    }
+
+    @Test func timeZoneChangeAffectsGreetingWhenHourCrossesBoundary() {
+        var eastern = Calendar(identifier: .gregorian)
+        eastern.timeZone = TimeZone(secondsFromGMT: -5 * 3600)!
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        // 16:30 UTC = 11:30 EST → morning in eastern, afternoon in UTC
+        let instant = utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 16, minute: 30))!
+        #expect(HomeDayPart.resolve(now: instant, calendar: utc) == .afternoon)
+        #expect(HomeDayPart.resolve(now: instant, calendar: eastern) == .morning)
+    }
+}
+
+struct ThemeSeparationTests {
+    @Test func interactiveAccentDiffersFromBotanicalInk() {
+        #expect(NextTheme.Palette.lightInteractive != NextTheme.Palette.lightBotanicalInk)
+        #expect(NextTheme.Palette.darkInteractive != NextTheme.Palette.darkBotanicalInk)
+    }
+
+    @Test func interactiveAccentIsLavenderNotPlantGreen() {
+        var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        NextTheme.Palette.lightInteractive.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
+        NextTheme.Palette.lightBotanicalInk.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        // Lavender is more blue/red-balanced; plant ink is greener.
+        #expect(lb > lg)
+        #expect(bg > br)
+        #expect(bg > bb)
+    }
+}
+
+// MARK: - V2-M8 Release Candidate
+
+struct ReleaseCandidateTests {
+    @Test func uitestHooksAreExplicitlyPrefixed() {
+        #expect(NextPersistence.seedArgument.hasPrefix("UITEST_"))
+        #expect(NextPersistence.inMemoryArgument.hasPrefix("UITEST_"))
+        #expect(AppearancePreference.launchArgument.hasPrefix("UITEST_"))
+        #expect(ReminderPreference.authLaunchArgument.hasPrefix("UITEST_"))
+        #expect(ReminderPreference.enabledLaunchArgument.hasPrefix("UITEST_"))
+        #expect(OnboardingPreference.freshArgument.hasPrefix("UITEST_"))
+    }
+
+    @Test func notificationIdentifiersRemainIsolated() {
+        #expect(FocusCompletionNotification.identifier == "next.focus.completion")
+        #expect(DailyReminder.identifier == "next.reminder.daily")
+        #expect(FocusCompletionNotification.identifier != DailyReminder.identifier)
+    }
+
+    @Test func reminderDefaultsStayOffAndLocal() {
+        let defaults = UserDefaults(suiteName: "next.rc-reminder-\(UUID().uuidString)")!
+        #expect(ReminderPreference.isEnabled(in: defaults) == false)
+        #expect(ReminderPreference.hour(in: defaults) == 9)
+        #expect(ReminderPreference.minute(in: defaults) == 0)
+    }
+
+    @Test func appearanceDefaultsToSystem() {
+        let defaults = UserDefaults(suiteName: "next.rc-appearance-\(UUID().uuidString)")!
+        #expect(AppearancePreference.current(in: defaults) == .system)
+    }
+
+    @MainActor
+    @Test func reminderDisableDoesNotEmitFocusCompletionIdentifier() async {
+        let defaults = UserDefaults(suiteName: "next.rc-cancel-\(UUID().uuidString)")!
+        let scheduler = MockDailyReminderScheduler()
+        let coordinator = DailyReminderCoordinator(
+            scheduler: scheduler,
+            skipsSystemPrompt: true,
+            defaults: defaults,
+            calendar: .current
+        )
+        _ = await coordinator.enable(now: Date(), hasFocusedToday: false)
+        coordinator.disable()
+        #expect(scheduler.pending.isEmpty)
+        #expect(!scheduler.scheduledIdentifiers.contains(FocusCompletionNotification.identifier))
+        #expect(scheduler.scheduledIdentifiers.allSatisfy { $0 == DailyReminder.identifier })
+    }
+
+    @MainActor
+    @Test func focusCompletionCancelLeavesReminderIdentifierUntouched() async {
+        let focusScheduler = MockFocusNotificationScheduler()
+        let focus = FocusNotificationCoordinator(scheduler: focusScheduler, skipsSystemPrompt: true)
+        let timer = FocusSessionTimer(durationMinutes: 25, startedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        await focus.sync(timer: timer, taskTitle: "Review amino acids", at: Date(timeIntervalSince1970: 1_700_000_000))
+        focus.cancel()
+        #expect(focusScheduler.scheduled.isEmpty)
+        #expect(focusScheduler.cancelCount >= 1)
+    }
+
+    @Test func keepScreenAwakeOnlyWhileRunningAndActive() {
+        #expect(
+            FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .running, sceneActive: true)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .paused, sceneActive: true)
+        )
+        #expect(
+            !FocusIdleTimerPolicy.isIdleTimerDisabled(keepScreenAwake: true, phase: .running, sceneActive: false)
+        )
+    }
+
+    @MainActor
+    @Test func persistentStoreSurvivesRelaunchWithoutSeeding() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("next-rc-\(UUID().uuidString).store")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: url)
+            let context = ModelContext(container)
+            let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+            context.insert(goal)
+            context.insert(GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: goal))
+            try context.save()
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: url)
+        let context = ModelContext(reopened)
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        let tasks = try context.fetch(FetchDescriptor<GoalTask>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Study for MCAT")
+        #expect(tasks.count == 1)
+        #expect(tasks.first?.isCompleted == false)
+    }
+}
+
 

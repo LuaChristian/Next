@@ -55,7 +55,7 @@ final class DailyReminderCoordinator {
 
     init(
         scheduler: DailyReminderScheduling = SystemDailyReminderScheduler(),
-        skipsSystemPrompt: Bool = ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("UITEST_") },
+        skipsSystemPrompt: Bool = NextUITestLaunch.isActive,
         defaults: UserDefaults = .standard,
         calendar: Calendar = .current
     ) {

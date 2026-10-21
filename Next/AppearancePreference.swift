@@ -29,8 +29,8 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
     var accessibilityHint: String {
         switch self {
         case .system: "Follows the iOS appearance setting"
-        case .light: "Always uses Calm Garden"
-        case .dark: "Always uses Twilight Quiet"
+        case .light: "Always uses Light"
+        case .dark: "Always uses Dark"
         }
     }
 
@@ -67,15 +67,19 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
     }
 
     /// Seed preference before the first frame (UI tests). Writes to `.standard`
-    /// so `@AppStorage` sees the value immediately.
+    /// so `@AppStorage` sees the value immediately. No-op in Release.
     static func applyLaunchOverrides(
         arguments: [String] = ProcessInfo.processInfo.arguments,
         defaults: UserDefaults? = nil
     ) {
+        #if DEBUG
         let defaults = defaults ?? .standard
         guard let index = arguments.firstIndex(of: launchArgument),
               arguments.indices.contains(index + 1) else { return }
         let value = resolve(stored: arguments[index + 1])
         defaults.set(value.rawValue, forKey: key)
+        #else
+        _ = (arguments, defaults)
+        #endif
     }
 }

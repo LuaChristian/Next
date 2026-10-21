@@ -1761,6 +1761,173 @@ final class NextUITests: XCTestCase {
         app.buttons["DONE"].tap()
     }
 
+    // MARK: - V2-M9 QA & Design Refinement
+
+    @MainActor
+    func testM9TabsSettingsHistoryAndHomeHeader() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["appearanceButton"].exists)
+        XCTAssertFalse(app.buttons["PREFERENCES"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Home"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Garden"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
+        XCTAssertFalse(app.tabBars.buttons["History"].exists)
+
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["APPEARANCE"].exists)
+        XCTAssertTrue(app.staticTexts["REMINDERS"].exists)
+        XCTAssertFalse(app.staticTexts["Calm Garden by day. Twilight Quiet by night."].exists)
+        XCTAssertFalse(app.staticTexts["Soft, never urgent."].exists)
+
+        app.buttons["settingsHistoryLink"].tap()
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testM9AppearanceSwitchesImmediatelyAndPersists() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
+
+        app.descendants(matching: .any)["appearance-dark"].tap()
+        XCTAssertEqual(app.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].exists)
+
+        app.descendants(matching: .any)["appearance-light"].tap()
+        XCTAssertEqual(app.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
+
+        app.descendants(matching: .any)["appearance-dark"].tap()
+        app.terminate()
+
+        let relaunch = XCUIApplication()
+        relaunch.launchArguments = ["UITEST_SEED_GARDEN"]
+        relaunch.launch()
+        relaunch.tabBars.buttons["Settings"].tap()
+        XCTAssertEqual(relaunch.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
+        relaunch.descendants(matching: .any)["appearance-system"].tap()
+        relaunch.terminate()
+    }
+
+    @MainActor
+    func testM9ReminderToggleStillWorksFromSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        let toggle = app.switches["dailyReminderToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 2))
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.tap()
+        XCTAssertEqual(app.switches["dailyReminderToggle"].value as? String, "1")
+        XCTAssertTrue(app.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testM9LargeDynamicTypeSettingsUsable() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
+        reveal(app.buttons["settingsHistoryLink"], in: app)
+        XCTAssertTrue(app.buttons["settingsHistoryLink"].isHittable)
+    }
+
+    @MainActor
+    func testM9VisualReview() throws {
+        let review = DesignRefinementCapture(self)
+
+        func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "UITEST_SEED_GARDEN_EVOLUTION",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_REMINDER", "off",
+                "UITEST_REMINDER_AUTH", "authorized"
+            ] + extra
+            app.launch()
+            return app
+        }
+
+        let homeLight = launch("light")
+        XCTAssertTrue(homeLight.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(homeLight, "01 Home — Light")
+        homeLight.terminate()
+
+        let homeDark = launch("dark")
+        XCTAssertTrue(homeDark.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        homeDark.buttons["30 min"].tap()
+        homeDark.buttons["Good"].tap()
+        review.capture(homeDark, "02 Home — Dark")
+        homeDark.terminate()
+
+        let settingsLight = launch("light")
+        settingsLight.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(settingsLight.staticTexts["SETTINGS"].waitForExistence(timeout: 2))
+        review.capture(settingsLight, "03 Settings — Light")
+        settingsLight.terminate()
+
+        let settingsDark = launch("dark")
+        settingsDark.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(settingsDark.staticTexts["SETTINGS"].waitForExistence(timeout: 2))
+        review.capture(settingsDark, "04 Settings — Dark")
+
+        settingsDark.buttons["settingsHistoryLink"].tap()
+        XCTAssertTrue(settingsDark.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        review.capture(settingsDark, "05 History from Settings — Dark")
+        settingsDark.terminate()
+
+        let gardenLight = launch("light")
+        gardenLight.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(gardenLight.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(gardenLight, "06 Garden — Light")
+        gardenLight.terminate()
+
+        let gardenDark = launch("dark")
+        gardenDark.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(gardenDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
+        review.capture(gardenDark, "07 Garden — Dark")
+        gardenDark.terminate()
+
+        let switchApp = launch("light")
+        switchApp.tabBars.buttons["Settings"].tap()
+        XCTAssertEqual(switchApp.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
+        switchApp.descendants(matching: .any)["appearance-dark"].tap()
+        XCTAssertEqual(switchApp.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
+        review.capture(switchApp, "08 Settings Light to Dark without relaunch")
+        switchApp.terminate()
+
+        let large = launch("light", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        large.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(large.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
+        reveal(large.buttons["settingsHistoryLink"], in: large)
+        review.capture(large, "09 Large Dynamic Type Settings")
+        large.terminate()
+    }
+
     /// Replacement capture for enabled-state DONE safe-area spacing (shot 03 only).
     @MainActor
     func testSmartRemindersEnabledSpacingScreenshot() throws {
@@ -1923,7 +2090,7 @@ final class NextUITests: XCTestCase {
         app.buttons["CONTINUE →"].tap()
         XCTAssertTrue(app.buttons["START USING NEXT →"].waitForExistence(timeout: 2))
         app.buttons["START USING NEXT →"].tap()
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 2))
     }
 
     private func launchGrowthShowcase() -> XCUIApplication {
@@ -2169,7 +2336,18 @@ private struct SmartRemindersCapture {
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
     func capture(_ app: XCUIApplication, _ name: String) {
-        // Active milestone review: always write M7 shots.
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct DesignRefinementCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V2-M9-QA-Design-Refinement"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        // Active milestone review: always write M9 shots.
         ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
     }
 }

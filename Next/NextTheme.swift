@@ -3,7 +3,9 @@
 //  Next
 //
 //  Appearance-aware semantic tokens.
-//  Light = Calm Garden. Dark = Twilight Quiet — Botanical Green.
+//  Light = warm ivory + muted lavender accents.
+//  Dark = twilight charcoal + lavender interactive accents.
+//  Plants keep botanical green via botanicalInk.
 //
 
 import SwiftUI
@@ -18,16 +20,19 @@ enum NextTheme {
     /// Slightly elevated surface (sheets, grouped areas).
     static let surface = Color(uiColor: Palette.surface)
 
+    /// Soft lavender selection / chip surface.
+    static let accentSurface = Color(uiColor: Palette.accentSurface)
+
     /// Primary copy.
     static let primaryText = Color(uiColor: Palette.primaryText)
 
     /// Supporting copy.
     static let secondaryText = Color(uiColor: Palette.secondaryText)
 
-    /// Signature botanical accent (controls, selection, tint).
-    static let botanicalAccent = Color(uiColor: Palette.botanicalAccent)
+    /// Interactive UI accent (tabs, selection, actions). Lavender — not plant ink.
+    static let interactiveAccent = Color(uiColor: Palette.interactiveAccent)
 
-    /// Softer botanical ink for plant line art.
+    /// Botanical green for plant illustration only.
     static let botanicalInk = Color(uiColor: Palette.botanicalInk)
 
     /// Hairlines and separators.
@@ -39,11 +44,13 @@ enum NextTheme {
     /// Destructive actions (delete).
     static let destructive = Color(uiColor: Palette.destructive)
 
-    // MARK: - Compatibility aliases (existing call sites)
+    // MARK: - Compatibility aliases
 
     static let ink = primaryText
     static let secondary = secondaryText
-    static let botanical = botanicalAccent
+    /// Legacy name — maps to interactive lavender, not plant green.
+    static let botanicalAccent = interactiveAccent
+    static let botanical = interactiveAccent
     static let disabled = disabledText
     static let rule = separator
 
@@ -51,7 +58,7 @@ enum NextTheme {
 
     /// Apply once at launch. Uses dynamic UIColors so chrome tracks appearance.
     static func applyChrome() {
-        let selected = Palette.botanicalAccent
+        let selected = Palette.interactiveAccent
         let muted = Palette.disabledText
         let background = Palette.canvas
         let shadow = Palette.separator
@@ -78,34 +85,40 @@ enum NextTheme {
     // MARK: - Palette
 
     enum Palette {
-        /// Calm Garden — Light
+        /// Warm ivory — Light (#FAF7F0)
         static let lightCanvas = UIColor(red: 250 / 255, green: 247 / 255, blue: 240 / 255, alpha: 1)
         static let lightSurface = UIColor(red: 250 / 255, green: 247 / 255, blue: 240 / 255, alpha: 1)
+        static let lightAccentSurface = UIColor(red: 234 / 255, green: 226 / 255, blue: 240 / 255, alpha: 1) // #EAE2F0
         static let lightPrimary = UIColor(red: 26 / 255, green: 26 / 255, blue: 23 / 255, alpha: 1)
         static let lightSecondary = UIColor(red: 97 / 255, green: 94 / 255, blue: 87 / 255, alpha: 1)
-        /// Existing V1 botanical (#405743), preserved.
-        static let lightBotanical = UIColor(red: 64 / 255, green: 87 / 255, blue: 67 / 255, alpha: 1)
+        /// Muted lavender interactive (#79628F)
+        static let lightInteractive = UIColor(red: 121 / 255, green: 98 / 255, blue: 143 / 255, alpha: 1)
+        /// Botanical green for plants only (#405743)
         static let lightBotanicalInk = UIColor(red: 64 / 255, green: 87 / 255, blue: 67 / 255, alpha: 1)
         static let lightDisabled = UIColor(red: 133 / 255, green: 127 / 255, blue: 117 / 255, alpha: 1)
         static let lightSeparator = UIColor(red: 115 / 255, green: 105 / 255, blue: 90 / 255, alpha: 0.22)
         static let lightDestructive = UIColor(red: 0.55, green: 0.18, blue: 0.16, alpha: 1)
 
-        /// Twilight Quiet — Dark
-        static let darkCanvas = UIColor(red: 23 / 255, green: 31 / 255, blue: 27 / 255, alpha: 1)       // #171F1B
-        static let darkSurface = UIColor(red: 34 / 255, green: 44 / 255, blue: 37 / 255, alpha: 1)      // #222C25
-        static let darkPrimary = UIColor(red: 242 / 255, green: 240 / 255, blue: 232 / 255, alpha: 1)   // #F2F0E8
-        static let darkSecondary = UIColor(red: 179 / 255, green: 190 / 255, blue: 179 / 255, alpha: 1) // #B3BEB3
-        static let darkBotanical = UIColor(red: 180 / 255, green: 204 / 255, blue: 179 / 255, alpha: 1)  // #B4CCB3
-        static let darkBotanicalInk = UIColor(red: 142 / 255, green: 173 / 255, blue: 145 / 255, alpha: 1) // #8EAD91
-        static let darkDisabled = UIColor(red: 135 / 255, green: 148 / 255, blue: 137 / 255, alpha: 1)  // #879489
-        static let darkSeparator = UIColor(red: 58 / 255, green: 73 / 255, blue: 62 / 255, alpha: 1)    // #3A493E
+        /// Twilight Quiet — Dark (#171F1B)
+        static let darkCanvas = UIColor(red: 23 / 255, green: 31 / 255, blue: 27 / 255, alpha: 1)
+        static let darkSurface = UIColor(red: 34 / 255, green: 44 / 255, blue: 37 / 255, alpha: 1)
+        static let darkAccentSurface = UIColor(red: 64 / 255, green: 54 / 255, blue: 75 / 255, alpha: 1) // #40364B
+        static let darkPrimary = UIColor(red: 242 / 255, green: 240 / 255, blue: 232 / 255, alpha: 1)
+        static let darkSecondary = UIColor(red: 179 / 255, green: 190 / 255, blue: 179 / 255, alpha: 1)
+        /// Soft lavender interactive (#C8B5DC)
+        static let darkInteractive = UIColor(red: 200 / 255, green: 181 / 255, blue: 220 / 255, alpha: 1)
+        /// Botanical green plant ink (#8EAD91)
+        static let darkBotanicalInk = UIColor(red: 142 / 255, green: 173 / 255, blue: 145 / 255, alpha: 1)
+        static let darkDisabled = UIColor(red: 135 / 255, green: 148 / 255, blue: 137 / 255, alpha: 1)
+        static let darkSeparator = UIColor(red: 58 / 255, green: 73 / 255, blue: 62 / 255, alpha: 1)
         static let darkDestructive = UIColor(red: 0.90, green: 0.55, blue: 0.50, alpha: 1)
 
         static let canvas = adaptive(light: lightCanvas, dark: darkCanvas)
         static let surface = adaptive(light: lightSurface, dark: darkSurface)
+        static let accentSurface = adaptive(light: lightAccentSurface, dark: darkAccentSurface)
         static let primaryText = adaptive(light: lightPrimary, dark: darkPrimary)
         static let secondaryText = adaptive(light: lightSecondary, dark: darkSecondary)
-        static let botanicalAccent = adaptive(light: lightBotanical, dark: darkBotanical)
+        static let interactiveAccent = adaptive(light: lightInteractive, dark: darkInteractive)
         static let botanicalInk = adaptive(light: lightBotanicalInk, dark: darkBotanicalInk)
         static let disabledText = adaptive(light: lightDisabled, dark: darkDisabled)
         static let separator = adaptive(light: lightSeparator, dark: darkSeparator)
@@ -147,7 +160,7 @@ struct NextPrimaryAction: View {
             Button(title, action: action)
                 .nextFont(13, weight: .semibold)
                 .tracking(2.2)
-                .foregroundStyle(isEnabled ? NextTheme.botanicalAccent : NextTheme.disabledText)
+                .foregroundStyle(isEnabled ? NextTheme.interactiveAccent : NextTheme.disabledText)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(!isEnabled)
 

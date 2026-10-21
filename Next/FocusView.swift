@@ -280,7 +280,7 @@ private struct FocusSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Toggle("Keep Screen Awake", isOn: $keepScreenAwake)
                     .labelsHidden()
-                    .tint(NextTheme.botanical)
+                    .tint(NextTheme.interactiveAccent)
                     .accessibilityLabel("Keep Screen Awake")
                     .accessibilityIdentifier("keepScreenAwake")
                     .accessibilityHint("Keep the display on while a focus session is actively running.")

@@ -24,8 +24,22 @@ enum NextPersistence {
     static let storeURLArgument = "UITEST_STORE_URL"
 
     static func makeContainer() throws -> ModelContainer {
-        let arguments = ProcessInfo.processInfo.arguments
+        #if DEBUG
+        if let container = try makeUITestContainerIfRequested() {
+            return container
+        }
+        #endif
 
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    /// UITest-only stores and seeds. Compiled out of Release so sample data
+    /// and in-memory fallbacks cannot activate in production builds.
+    #if DEBUG
+    private static func makeUITestContainerIfRequested(
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) throws -> ModelContainer? {
         if let index = arguments.firstIndex(of: storeURLArgument),
            arguments.indices.contains(index + 1) {
             let url = URL(fileURLWithPath: arguments[index + 1])
@@ -46,7 +60,7 @@ enum NextPersistence {
             return container
         }
 
-        if arguments.contains(seedArgument)
+        let wantsUITestStore = arguments.contains(seedArgument)
             || arguments.contains(growthSeedArgument)
             || arguments.contains(historySeedArgument)
             || arguments.contains(lifecycleSeedArgument)
@@ -54,37 +68,37 @@ enum NextPersistence {
             || arguments.contains(managementSeedArgument)
             || arguments.contains(gardenEvolutionSeedArgument)
             || arguments.contains(plantComparisonArgument)
-            || arguments.contains(inMemoryArgument) {
-            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let context = ModelContext(container)
-            if arguments.contains(seedArgument) {
-                seed(context)
-            }
-            if arguments.contains(growthSeedArgument) {
-                seedGrowthStages(context)
-            }
-            if arguments.contains(historySeedArgument) {
-                seedHistory(context)
-            }
-            if arguments.contains(lifecycleSeedArgument) {
-                seedTaskLifecycle(context)
-            }
-            if arguments.contains(recommendationSeedArgument) {
-                seedRecommendationEngine(context)
-            }
-            if arguments.contains(managementSeedArgument) {
-                seedManagement(context)
-            }
-            if arguments.contains(gardenEvolutionSeedArgument) {
-                seedGardenEvolution(context)
-            }
-            return container
-        }
+            || arguments.contains(inMemoryArgument)
 
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        return try ModelContainer(for: schema, configurations: [configuration])
+        guard wantsUITestStore else { return nil }
+
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        if arguments.contains(seedArgument) {
+            seed(context)
+        }
+        if arguments.contains(growthSeedArgument) {
+            seedGrowthStages(context)
+        }
+        if arguments.contains(historySeedArgument) {
+            seedHistory(context)
+        }
+        if arguments.contains(lifecycleSeedArgument) {
+            seedTaskLifecycle(context)
+        }
+        if arguments.contains(recommendationSeedArgument) {
+            seedRecommendationEngine(context)
+        }
+        if arguments.contains(managementSeedArgument) {
+            seedManagement(context)
+        }
+        if arguments.contains(gardenEvolutionSeedArgument) {
+            seedGardenEvolution(context)
+        }
+        return container
     }
+    #endif
 
     static func makeInMemoryContainer() throws -> ModelContainer {
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

@@ -52,7 +52,9 @@ struct HistoryView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(NextTheme.canvas.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(NextTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private var weeklySummary: some View {

@@ -19,13 +19,13 @@ struct SelectionOption: View {
             VStack(spacing: 8) {
                 Text(title)
                     .nextFont(16, weight: isSelected ? .medium : .regular)
-                    .foregroundStyle(isSelected ? NextTheme.botanical : NextTheme.ink)
+                    .foregroundStyle(isSelected ? NextTheme.interactiveAccent : NextTheme.ink)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)
 
                 Capsule()
-                    .fill(isSelected ? NextTheme.botanical : Color.clear)
+                    .fill(isSelected ? NextTheme.interactiveAccent : Color.clear)
                     .frame(width: 18, height: 2)
             }
             .frame(maxWidth: .infinity, minHeight: 44)

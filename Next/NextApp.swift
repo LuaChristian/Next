@@ -39,6 +39,7 @@ struct NextApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
+                #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains(NextPersistence.plantComparisonArgument) {
                     PlantComparisonView()
                 } else if hasCompletedOnboarding {
@@ -48,9 +49,18 @@ struct NextApp: App {
                         hasCompletedOnboarding = true
                     }
                 }
+                #else
+                if hasCompletedOnboarding {
+                    ContentView()
+                } else {
+                    OnboardingFlow {
+                        hasCompletedOnboarding = true
+                    }
+                }
+                #endif
             }
             .preferredColorScheme(appearance.preferredColorScheme)
-            .tint(NextTheme.botanicalAccent)
+            .tint(NextTheme.interactiveAccent)
             .background(NextTheme.canvas.ignoresSafeArea())
         }
         .modelContainer(container)

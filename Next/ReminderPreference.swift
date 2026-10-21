@@ -77,7 +77,9 @@ enum ReminderPreference {
     }
 
     /// Apply UITest launch overrides before first scene. Does not request notification permission.
+    /// No-op in Release — production must never inherit test reminder state from launch args.
     static func applyLaunchOverrides(arguments: [String] = ProcessInfo.processInfo.arguments) {
+        #if DEBUG
         if let value = valueAfter(enabledLaunchArgument, in: arguments) {
             setEnabled(value == "on" || value == "1" || value == "true")
         }
@@ -87,11 +89,15 @@ enum ReminderPreference {
         if let minuteValue = valueAfter(minuteLaunchArgument, in: arguments), let minute = Int(minuteValue) {
             setTime(hour: hour(), minute: minute)
         }
+        #else
+        _ = arguments
+        #endif
     }
 
     static func launchAuthorizationOverride(
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> UNAuthorizationStatus? {
+        #if DEBUG
         guard let value = valueAfter(authLaunchArgument, in: arguments) else { return nil }
         switch value {
         case "authorized": return .authorized
@@ -100,6 +106,10 @@ enum ReminderPreference {
         case "notDetermined": return .notDetermined
         default: return nil
         }
+        #else
+        _ = arguments
+        return nil
+        #endif
     }
 
     private static func valueAfter(_ flag: String, in arguments: [String]) -> String? {

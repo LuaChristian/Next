@@ -32,14 +32,14 @@ struct ContentView: View {
             .tag(1)
 
             NavigationStack {
-                HistoryView()
+                SettingsView()
             }
             .tabItem {
-                Label("History", systemImage: "clock")
+                Label("Settings", systemImage: "gearshape")
             }
             .tag(2)
         }
-        .tint(NextTheme.botanicalAccent)
+        .tint(NextTheme.interactiveAccent)
         .toolbarBackground(NextTheme.canvas, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .onChange(of: scenePhase) { _, phase in

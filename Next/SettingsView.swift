@@ -1,16 +1,15 @@
 //
-//  PreferencesView.swift
+//  SettingsView.swift
 //  Next
 //
-//  Lightweight Home sheet: Appearance + optional Reminders.
+//  Main Settings tab: Appearance, Reminders, History destination.
 //
 
 import SwiftData
 import SwiftUI
 
-struct PreferencesView: View {
-    @Binding var appearanceRaw: String
-    @Environment(\.dismiss) private var dismiss
+struct SettingsView: View {
+    @AppStorage(AppearancePreference.key) private var appearanceRaw = AppearancePreference.system.rawValue
     @Environment(\.modelContext) private var modelContext
 
     @State private var reminderEnabled = ReminderPreference.isEnabled()
@@ -25,7 +24,7 @@ struct PreferencesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("PREFERENCES")
+                Text("SETTINGS")
                     .nextFont(13, weight: .medium, relativeTo: .caption)
                     .tracking(3.2)
                     .foregroundStyle(NextTheme.secondaryText)
@@ -38,27 +37,21 @@ struct PreferencesView: View {
                     .padding(.vertical, 28)
 
                 remindersSection
+
+                NextHairline()
+                    .padding(.vertical, 28)
+
+                historySection
             }
             .padding(.horizontal, NextTheme.pagePadding)
             .padding(.top, 12)
-            .padding(.bottom, 24)
+            .padding(.bottom, 28)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(NextTheme.canvas.ignoresSafeArea())
-        // Pin DONE above the home indicator so the taller enabled-reminders
-        // layout cannot scroll the action into the unsafe bottom edge.
-        // Sheets often report a collapsed bottom safe area, so keep explicit
-        // padding under the action hairline (not only the system inset).
-        .safeAreaInset(edge: .bottom) {
-            NextPrimaryAction(title: "DONE") {
-                dismiss()
-            }
-            .padding(.horizontal, NextTheme.pagePadding)
-            .padding(.bottom, 28)
-            .background(NextTheme.canvas)
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task { await refreshAuthorization() }
-        .accessibilityIdentifier("preferencesSheet")
+        .accessibilityIdentifier("settingsScreen")
     }
 
     private var appearanceSection: some View {
@@ -67,12 +60,7 @@ struct PreferencesView: View {
                 .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.8)
                 .foregroundStyle(NextTheme.secondaryText)
-
-            Text("Calm Garden by day. Twilight Quiet by night.")
-                .nextFont(17)
-                .foregroundStyle(NextTheme.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 12)
+                .accessibilityAddTraits(.isHeader)
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(AppearancePreference.allCases) { option in
@@ -82,7 +70,7 @@ struct PreferencesView: View {
                     }
                 }
             }
-            .padding(.top, 20)
+            .padding(.top, 12)
         }
     }
 
@@ -94,7 +82,7 @@ struct PreferencesView: View {
                 .foregroundStyle(NextTheme.secondaryText)
                 .accessibilityAddTraits(.isHeader)
 
-            Text("An optional daily invitation to begin a focus session. Soft, never urgent.")
+            Text("An optional daily reminder to begin a focus session.")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -109,7 +97,7 @@ struct PreferencesView: View {
                         .foregroundStyle(NextTheme.secondaryText)
                 }
             }
-            .tint(NextTheme.botanicalAccent)
+            .tint(NextTheme.interactiveAccent)
             .accessibilityIdentifier("dailyReminderToggle")
             .accessibilityHint("When on, Next may send one calm local reminder each day at your chosen time.")
 
@@ -120,18 +108,13 @@ struct PreferencesView: View {
                     displayedComponents: .hourAndMinute
                 )
                 .datePickerStyle(.compact)
-                .tint(NextTheme.botanicalAccent)
+                .tint(NextTheme.interactiveAccent)
                 .accessibilityIdentifier("dailyReminderTime")
 
                 Text(timeSummaryLabel)
                     .nextFont(13, relativeTo: .caption)
                     .foregroundStyle(NextTheme.secondaryText)
                     .accessibilityIdentifier("dailyReminderTimeSummary")
-
-                Text("Next schedules a single local reminder for the next open day. If you already focused today, the next invitation waits until tomorrow.")
-                    .nextFont(13, relativeTo: .caption)
-                    .foregroundStyle(NextTheme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if showDeniedGuidance {
@@ -146,11 +129,42 @@ struct PreferencesView: View {
                     }
                     .nextFont(13, weight: .semibold)
                     .tracking(1.4)
-                    .foregroundStyle(NextTheme.botanicalAccent)
+                    .foregroundStyle(NextTheme.interactiveAccent)
                     .accessibilityIdentifier("openNotificationSettings")
                 }
                 .padding(.top, 4)
             }
+        }
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("HISTORY")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.8)
+                .foregroundStyle(NextTheme.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+
+            NavigationLink {
+                HistoryView()
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("View Focus History")
+                        .nextFont(20, relativeTo: .title3)
+                        .foregroundStyle(NextTheme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(">")
+                        .nextFont(20, relativeTo: .title3)
+                        .foregroundStyle(NextTheme.interactiveAccent)
+                }
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settingsHistoryLink")
+            .accessibilityLabel("View Focus History")
+            .accessibilityHint("Opens your focus session history")
         }
     }
 
@@ -196,7 +210,7 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(option.title)
                         .nextFont(22, relativeTo: .title3)
-                        .foregroundStyle(isSelected ? NextTheme.botanicalAccent : NextTheme.primaryText)
+                        .foregroundStyle(isSelected ? NextTheme.interactiveAccent : NextTheme.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(option.accessibilityHint)
@@ -210,7 +224,7 @@ struct PreferencesView: View {
                     Text("SELECTED")
                         .nextFont(11, weight: .semibold, relativeTo: .caption2)
                         .tracking(1.4)
-                        .foregroundStyle(NextTheme.botanicalAccent)
+                        .foregroundStyle(NextTheme.interactiveAccent)
                 }
             }
             .padding(.vertical, 18)
@@ -246,10 +260,16 @@ struct PreferencesView: View {
         reminderEnabled = ReminderPreference.isEnabled()
         reminderTime = ReminderPreference.timeDate()
         if reminderEnabled, !authorization.canDeliver {
-            // Preference was left enabled while OS revoked access — correct the UI.
             DailyReminderCoordinator.shared.disable()
             reminderEnabled = false
             showDeniedGuidance = authorization == .denied || authorization == .unavailable
         }
     }
+}
+
+#Preview {
+    NavigationStack {
+        SettingsView()
+    }
+    .modelContainer(for: [Goal.self, GoalTask.self, FocusSession.self], inMemory: true)
 }

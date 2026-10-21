@@ -14,6 +14,7 @@ enum OnboardingPreference {
     static let freshArgument = "UITEST_FRESH_ONBOARDING"
 
     static func store(arguments: [String] = ProcessInfo.processInfo.arguments) -> UserDefaults {
+        #if DEBUG
         if let index = arguments.firstIndex(of: suiteArgument),
            arguments.indices.contains(index + 1),
            let defaults = UserDefaults(suiteName: arguments[index + 1]) {
@@ -23,6 +24,9 @@ enum OnboardingPreference {
         if arguments.contains(where: { $0.hasPrefix("UITEST_") }) {
             return UserDefaults(suiteName: "next.uitest.ephemeral") ?? .standard
         }
+        #else
+        _ = arguments
+        #endif
 
         return .standard
     }
@@ -31,12 +35,16 @@ enum OnboardingPreference {
         arguments: [String] = ProcessInfo.processInfo.arguments,
         defaults: UserDefaults? = nil
     ) {
+        #if DEBUG
         let defaults = defaults ?? store(arguments: arguments)
         if arguments.contains(completedArgument) {
             defaults.set(true, forKey: completedKey)
         } else if arguments.contains(freshArgument) {
             defaults.removeObject(forKey: completedKey)
         }
+        #else
+        _ = (arguments, defaults)
+        #endif
     }
 
     static func resolveCompleted(
