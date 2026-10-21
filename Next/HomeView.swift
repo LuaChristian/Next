@@ -64,41 +64,50 @@ struct HomeView: View {
         dynamicTypeSize.isAccessibilitySize
     }
 
-    private var scopedTasks: [TaskItem] {
-        persistedTasks.recommendationItems(matching: recommendationScope)
-    }
-
-    private var scopedActiveTaskCount: Int {
-        scopedTasks.count
-    }
-
     private var selectedGoalTitle: String? {
         guard let id = recommendationScope.selectedGoalID else { return nil }
         return goals.first(where: { $0.id == id })?.title
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            Spacer(minLength: 28)
-            scopeSection
-            Spacer(minLength: 28)
-            timeSection
-            Spacer(minLength: 32)
-            energySection
-            Spacer(minLength: 36)
-            NextPrimaryAction(title: "WHAT'S NEXT?", isEnabled: canProceed) {
-                guard let time = selectedTime, let energy = selectedEnergy else { return }
-                recommendationScope.validate(against: goals)
-                recommendationInput = RecommendationInput(
-                    time: time,
-                    energy: energy,
-                    scope: recommendationScope
-                )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+
+                focusSection
+                    .padding(.top, 28)
+
+                NextHairline()
+                    .padding(.top, 22)
+
+                timeSection
+                    .padding(.top, 22)
+
+                NextHairline()
+                    .padding(.top, 22)
+
+                energySection
+                    .padding(.top, 22)
+
+                NextPrimaryAction(title: "WHAT'S NEXT?", isEnabled: canProceed) {
+                    guard let time = selectedTime, let energy = selectedEnergy else { return }
+                    recommendationScope.validate(against: goals)
+                    recommendationInput = RecommendationInput(
+                        time: time,
+                        energy: energy,
+                        scope: recommendationScope
+                    )
+                }
+                .padding(.top, 28)
+                .accessibilityIdentifier("whatsNextButton")
             }
-            .accessibilityIdentifier("whatsNextButton")
+            .padding(.horizontal, NextTheme.pagePadding)
+            .padding(.top, dynamicTypeSize.isAccessibilitySize ? 16 : 12)
+            .padding(.bottom, 28)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .nextScrollableCanvas()
+        .scrollDismissesKeyboard(.interactively)
+        .background(NextTheme.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $recommendationInput) { input in
             let tasks = persistedTasks.recommendationItems(matching: input.scope)
@@ -154,7 +163,7 @@ struct HomeView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("NEXT")
                 .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(3.2)
@@ -168,8 +177,10 @@ struct HomeView: View {
         }
     }
 
-    private var scopeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    private var focusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("01 / FOCUS")
+
             Text("What would you like to focus on?")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.ink)
@@ -184,6 +195,8 @@ struct HomeView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityLabel("Focus scope")
+            .accessibilityValue(recommendationScope.mode.title)
             .accessibilityIdentifier("recommendationScopePicker")
 
             switch recommendationScope.mode {
@@ -198,6 +211,7 @@ struct HomeView: View {
                 ) {
                     showingAreaSheet = true
                 }
+                .padding(.top, 4)
             case .specificGoal:
                 SearchableSingleSelectField(
                     label: "GOAL",
@@ -207,14 +221,18 @@ struct HomeView: View {
                 ) {
                     showingGoalSheet = true
                 }
+                .padding(.top, 4)
             }
         }
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("homeFocusSection")
     }
 
     private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("What do you have time for?")
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("02 / TIME")
+
+            Text("How much time do you have?")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -232,10 +250,13 @@ struct HomeView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("homeTimeSection")
     }
 
     private var energySection: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("03 / ENERGY")
+
             Text("How are you feeling?")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.ink)
@@ -254,6 +275,15 @@ struct HomeView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("homeEnergySection")
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .nextFont(13, weight: .medium, relativeTo: .caption)
+            .tracking(1.8)
+            .foregroundStyle(NextTheme.secondaryText)
+            .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder

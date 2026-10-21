@@ -1950,6 +1950,161 @@ final class NextUITests: XCTestCase {
         large.terminate()
     }
 
+    // MARK: - V3-M3 Home Experience Refinement
+
+    @MainActor
+    func testM3HomeGroupedSectionsAndWhatsNext() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["01 / FOCUS"].exists)
+        XCTAssertTrue(app.staticTexts["02 / TIME"].exists)
+        XCTAssertTrue(app.staticTexts["03 / ENERGY"].exists)
+        XCTAssertTrue(app.staticTexts["What would you like to focus on?"].exists)
+        XCTAssertTrue(app.staticTexts["How much time do you have?"].exists)
+        XCTAssertTrue(app.staticTexts["How are you feeling?"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["recommendationScopePicker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeFocusSection"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeTimeSection"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeEnergySection"].exists)
+
+        // Anything leaves no secondary picker.
+        XCTAssertFalse(app.descendants(matching: .any)["scopeAreaField"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scopeGoalField"].exists)
+
+        let whatsNext = app.buttons["WHAT'S NEXT?"]
+        XCTAssertFalse(whatsNext.isEnabled)
+        app.buttons["30 min"].tap()
+        XCTAssertFalse(whatsNext.isEnabled)
+        app.buttons["Good"].tap()
+        XCTAssertTrue(whatsNext.isEnabled)
+        whatsNext.tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testM3VisualReview() throws {
+        let review = HomeExperienceCapture(self)
+
+        func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "UITEST_SEED_MULTI_AREA",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_REMINDER", "off"
+            ] + extra
+            app.launch()
+            return app
+        }
+
+        let light = launch("light")
+        XCTAssertTrue(light.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(light, "01 Home — grouped sections Light")
+
+        light.buttons["30 min"].tap()
+        light.buttons["Good"].tap()
+        review.capture(light, "02 Home — Time and Energy selected Light")
+        light.terminate()
+
+        let dark = launch("dark")
+        XCTAssertTrue(dark.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        dark.segmentedControls.buttons["Life area"].tap()
+        dark.descendants(matching: .any)["scopeAreaField"].tap()
+        XCTAssertTrue(dark.descendants(matching: .any)["scopeAreaSheet"].waitForExistence(timeout: 2))
+        dark.descendants(matching: .any)["scopeArea-career"].tap()
+        dark.buttons["30 min"].tap()
+        dark.buttons["Ready"].tap()
+        review.capture(dark, "03 Home — Life area scope Dark")
+        dark.terminate()
+
+        let goal = launch("light")
+        goal.segmentedControls.buttons["Specific goal"].tap()
+        goal.descendants(matching: .any)["scopeGoalField"].tap()
+        XCTAssertTrue(goal.descendants(matching: .any)["scopeGoalSheet"].waitForExistence(timeout: 2))
+        review.capture(goal, "04 Home — goal picker sheet")
+        let firstGoal = goal.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scopeGoal-")
+        ).element(boundBy: 0)
+        XCTAssertTrue(firstGoal.waitForExistence(timeout: 2))
+        firstGoal.tap()
+        review.capture(goal, "05 Home — Specific goal selected")
+        goal.terminate()
+
+        // Large Dynamic Type: capture the true top first (do not reveal/scroll before this).
+        let large = launch("light", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        XCTAssertTrue(large.staticTexts["NEXT"].waitForExistence(timeout: 3))
+        XCTAssertTrue(large.descendants(matching: .any)["homeGreeting"].exists)
+        XCTAssertTrue(large.staticTexts["01 / FOCUS"].exists)
+        // Branding and greeting must clear the status-bar band at rest.
+        let nextLabel = large.staticTexts["NEXT"]
+        XCTAssertGreaterThan(nextLabel.frame.minY, 47, "NEXT should sit below the status bar at rest")
+        XCTAssertGreaterThan(large.descendants(matching: .any)["homeGreeting"].frame.minY, nextLabel.frame.maxY)
+        review.capture(large, "06 Home — Large Dynamic Type at top")
+
+        reveal(large.buttons["WHAT'S NEXT?"], in: large)
+        XCTAssertTrue(large.buttons["WHAT'S NEXT?"].isHittable)
+        XCTAssertTrue(large.staticTexts["03 / ENERGY"].exists)
+        review.capture(large, "07 Home — Large Dynamic Type scrolled")
+
+        // Scroll back to top and confirm branding returns cleanly under the safe area.
+        for _ in 0..<8 { large.swipeDown() }
+        XCTAssertTrue(large.staticTexts["NEXT"].waitForExistence(timeout: 2))
+        XCTAssertTrue(large.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(large.staticTexts["NEXT"].frame.minY, 47)
+        large.terminate()
+    }
+
+    @MainActor
+    func testM3HomeAccessibilitySelectionState() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+
+        let scope = app.descendants(matching: .any)["recommendationScopePicker"]
+        XCTAssertTrue(scope.waitForExistence(timeout: 2))
+        app.segmentedControls.buttons["Life area"].tap()
+        XCTAssertEqual(app.segmentedControls.buttons["Life area"].isSelected, true)
+
+        app.buttons["30 min"].tap()
+        XCTAssertEqual(app.buttons["30 min"].value as? String, "Selected")
+        XCTAssertEqual(app.buttons["15 min"].value as? String, "Not selected")
+
+        app.buttons["Good"].tap()
+        XCTAssertEqual(app.buttons["Good"].value as? String, "Selected")
+        XCTAssertEqual(app.buttons["Low"].value as? String, "Not selected")
+
+        // Selection is also conveyed by the selected trait / value, not color alone.
+        XCTAssertTrue(app.buttons["WHAT'S NEXT?"].isEnabled)
+    }
+
+    @MainActor
+    func testM3NarrowPhoneHomeLayout() throws {
+        // Captured separately on iPhone 16e via destination override in the QA run.
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["01 / FOCUS"].exists)
+        XCTAssertTrue(app.staticTexts["02 / TIME"].exists)
+        XCTAssertTrue(app.staticTexts["03 / ENERGY"].exists)
+        XCTAssertTrue(app.buttons["15 min"].isHittable)
+        XCTAssertTrue(app.buttons["90+ min"].isHittable)
+        XCTAssertTrue(app.buttons["Low"].isHittable)
+        XCTAssertTrue(app.buttons["Ready"].isHittable)
+        let whatsNext = app.buttons["WHAT'S NEXT?"]
+        XCTAssertTrue(whatsNext.exists)
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        XCTAssertTrue(whatsNext.isHittable)
+        HomeExperienceCapture(self).capture(app, "08 Home — Narrow iPhone")
+    }
+
     // MARK: - V3-M2 Focus History Management
 
     @MainActor
@@ -2790,6 +2945,17 @@ private struct GoalOrganizationCapture {
 private struct FocusHistoryCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M2-Focus-History-Management"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct HomeExperienceCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M3-Home-Experience"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
