@@ -26,12 +26,29 @@ enum NextPersistence {
     static func makeContainer() throws -> ModelContainer {
         #if DEBUG
         if let container = try makeUITestContainerIfRequested() {
+            migrateGoalAreasIfNeeded(ModelContext(container))
             return container
         }
         #endif
 
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        migrateGoalAreasIfNeeded(ModelContext(container))
+        return container
+    }
+
+    /// Backfill `areasRaw` from legacy `area` for rows created before multi-area support.
+    /// Safe to call repeatedly; does not delete or recreate goals.
+    static func migrateGoalAreasIfNeeded(_ context: ModelContext) {
+        guard let goals = try? context.fetch(FetchDescriptor<Goal>()) else { return }
+        var changed = false
+        for goal in goals where !goal.areasMigrated {
+            goal.migrateAreasIfNeeded()
+            changed = true
+        }
+        if changed {
+            try? context.save()
+        }
     }
 
     /// UITest-only stores and seeds. Compiled out of Release so sample data
@@ -57,6 +74,9 @@ enum NextPersistence {
             if arguments.contains(managementSeedArgument) {
                 seedManagement(ModelContext(container))
             }
+            if arguments.contains(multiAreaSeedArgument) {
+                seedMultiArea(ModelContext(container))
+            }
             return container
         }
 
@@ -68,6 +88,7 @@ enum NextPersistence {
             || arguments.contains(managementSeedArgument)
             || arguments.contains(gardenEvolutionSeedArgument)
             || arguments.contains(plantComparisonArgument)
+            || arguments.contains(multiAreaSeedArgument)
             || arguments.contains(inMemoryArgument)
 
         guard wantsUITestStore else { return nil }
@@ -96,6 +117,9 @@ enum NextPersistence {
         if arguments.contains(gardenEvolutionSeedArgument) {
             seedGardenEvolution(context)
         }
+        if arguments.contains(multiAreaSeedArgument) {
+            seedMultiArea(context)
+        }
         return container
     }
     #endif
@@ -107,8 +131,12 @@ enum NextPersistence {
 
     static func makeContainer(storeURL: URL) throws -> ModelContainer {
         let configuration = ModelConfiguration(schema: schema, url: storeURL)
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        migrateGoalAreasIfNeeded(ModelContext(container))
+        return container
     }
+
+    static let multiAreaSeedArgument = "UITEST_SEED_MULTI_AREA"
 
     static func seed(_ context: ModelContext) {
         let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
@@ -362,6 +390,54 @@ enum NextPersistence {
                 task: movement
             )
         )
+
+        try? context.save()
+    }
+
+    /// Seed for V3-M1 screenshots and scope UI tests: multi-area goal + several goals.
+    static func seedMultiArea(_ context: ModelContext, now: Date = Date()) {
+        let next = Goal(
+            title: "Build Next",
+            areas: [.creative, .career, .education],
+            priority: .high,
+            plantVariant: .broadLeaf
+        )
+        context.insert(next)
+        let sketch = GoalTask(title: "Sketch the garden", durationMinutes: 30, energyRequired: .good, goal: next)
+        context.insert(sketch)
+        context.insert(
+            FocusSession(
+                completedAt: now.addingTimeInterval(-2 * 24 * 60 * 60),
+                plannedDurationSeconds: 120 * 60,
+                focusedDurationSeconds: 120 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                taskTitleSnapshot: sketch.title,
+                goalTitleSnapshot: next.title,
+                goal: next,
+                task: sketch
+            )
+        )
+
+        let mcat = Goal(title: "Study for MCAT", areas: [.education], priority: .high, plantVariant: .narrowLeaf)
+        context.insert(mcat)
+        context.insert(GoalTask(title: "Review amino acids", durationMinutes: 30, energyRequired: .good, goal: mcat))
+        context.insert(GoalTask(title: "Review flashcards", durationMinutes: 15, energyRequired: .low, goal: mcat))
+
+        let portfolio = Goal(title: "Portfolio", areas: [.career], priority: .normal, plantVariant: .branching)
+        context.insert(portfolio)
+        context.insert(GoalTask(title: "Update project description", durationMinutes: 30, energyRequired: .good, goal: portfolio))
+
+        let declutter = Goal(title: "Keep your space organized", areas: [.personal], priority: .low, plantVariant: .roundedLeaf)
+        context.insert(declutter)
+        context.insert(GoalTask(title: "Clean your space", durationMinutes: 15, energyRequired: .low, goal: declutter))
+
+        let twinA = Goal(title: "Shared Title Twin", areas: [.fitness], priority: .normal, plantVariant: .broadLeaf)
+        let twinB = Goal(title: "Shared Title Twin", areas: [.wellness], priority: .normal, plantVariant: .narrowLeaf)
+        context.insert(twinA)
+        context.insert(twinB)
+        context.insert(GoalTask(title: "Twin A workout", durationMinutes: 30, energyRequired: .good, goal: twinA))
+        context.insert(GoalTask(title: "Twin B stretch", durationMinutes: 15, energyRequired: .low, goal: twinB))
 
         try? context.save()
     }

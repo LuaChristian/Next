@@ -18,7 +18,7 @@ struct EditGoalView: View {
     let goalID: UUID
 
     @State private var title = ""
-    @State private var selectedArea: GoalArea?
+    @State private var selectedAreas: Set<GoalArea> = []
     @State private var selectedPriority: GoalPriority = .normal
     @State private var didLoad = false
 
@@ -27,7 +27,7 @@ struct EditGoalView: View {
     }
 
     private var canSave: Bool {
-        NextInput.trimmedTitle(title) != nil && selectedArea != nil
+        NextInput.trimmedTitle(title) != nil
     }
 
     var body: some View {
@@ -53,14 +53,11 @@ struct EditGoalView: View {
                     .padding(.top, 18)
                     .accessibilityLabel("Goal title")
 
-                Text("AREA")
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.8)
-                    .foregroundStyle(NextTheme.secondary)
+                LifeAreaMultiSelectField(selected: $selectedAreas)
                     .padding(.top, 40)
-
-                areaGrid
-                    .padding(.top, 8)
+                    .onChange(of: selectedAreas) { _, _ in
+                        titleFocused = false
+                    }
 
                 Text("PRIORITY")
                     .nextFont(13, weight: .medium, relativeTo: .caption)
@@ -100,26 +97,6 @@ struct EditGoalView: View {
         }
     }
 
-    private var areaGrid: some View {
-        LazyVGrid(columns: areaColumns, spacing: 4) {
-            ForEach(GoalArea.allCases) { area in
-                SelectionOption(
-                    title: area.title,
-                    isSelected: selectedArea == area
-                ) {
-                    titleFocused = false
-                    selectedArea = area
-                }
-            }
-        }
-    }
-
-    private var areaColumns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize
-            ? [GridItem(.flexible())]
-            : [GridItem(.flexible()), GridItem(.flexible())]
-    }
-
     @ViewBuilder
     private func choiceStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
@@ -132,11 +109,11 @@ struct EditGoalView: View {
     private var saveAction: some View {
         NextPrimaryAction(title: "SAVE GOAL →", isEnabled: canSave) {
             titleFocused = false
-            guard let goal, let area = selectedArea else { return }
+            guard let goal else { return }
             try? PlanningStore.updateGoal(
                 goal,
                 title: title,
-                area: area,
+                areas: Array(selectedAreas),
                 priority: selectedPriority,
                 context: modelContext
             )
@@ -149,8 +126,9 @@ struct EditGoalView: View {
 
     private func loadCurrentValues() {
         guard !didLoad, let goal else { return }
+        goal.migrateAreasIfNeeded()
         title = goal.title
-        selectedArea = goal.area
+        selectedAreas = Set(goal.areas)
         selectedPriority = goal.priority
         didLoad = true
     }

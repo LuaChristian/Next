@@ -87,7 +87,13 @@ enum TaskDuration: CaseIterable, Identifiable {
 final class Goal {
     var id: UUID
     var title: String
+    /// Legacy single-area field retained for SwiftData lightweight compatibility.
+    /// Authoritative membership lives in `areasRaw` after `areasMigrated` is true.
     var area: GoalArea
+    /// Pipe-separated unique `GoalArea.rawValue`s. Empty means zero areas (after migration).
+    var areasRaw: String = ""
+    /// False on rows that only have the legacy `area` field populated.
+    var areasMigrated: Bool = false
     var priority: GoalPriority
     var createdAt: Date
     /// Additive V2-M5 identity. Existing rows migrate to broadLeaf via the stored default.
@@ -113,11 +119,58 @@ final class Goal {
         self.id = id
         self.title = title
         self.area = area
+        self.areasRaw = Self.encodeAreas([area])
+        self.areasMigrated = true
         self.priority = priority
         self.createdAt = createdAt
         self.plantVariantRaw = plantVariant.rawValue
         self.tasks = tasks
         self.focusSessions = focusSessions
+    }
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        areas: [GoalArea],
+        priority: GoalPriority,
+        createdAt: Date = Date(),
+        plantVariant: PlantVariant = .broadLeaf,
+        tasks: [GoalTask] = [],
+        focusSessions: [FocusSession] = []
+    ) {
+        let normalized = Self.normalized(areas)
+        self.id = id
+        self.title = title
+        self.area = normalized.first ?? .personal
+        self.areasRaw = Self.encodeAreas(normalized)
+        self.areasMigrated = true
+        self.priority = priority
+        self.createdAt = createdAt
+        self.plantVariantRaw = plantVariant.rawValue
+        self.tasks = tasks
+        self.focusSessions = focusSessions
+    }
+
+    /// Deduplicated areas in stable GoalArea.allCases order.
+    var areas: [GoalArea] {
+        get {
+            if areasMigrated {
+                return Self.decodeAreas(areasRaw)
+            }
+            return [area]
+        }
+        set {
+            let normalized = Self.normalized(newValue)
+            areasRaw = Self.encodeAreas(normalized)
+            if let first = normalized.first {
+                area = first
+            }
+            areasMigrated = true
+        }
+    }
+
+    var areasDisplayLabel: String {
+        areas.map { $0.title.uppercased() }.joined(separator: " · ")
     }
 
     var sortedTasks: [GoalTask] {
@@ -165,7 +218,37 @@ final class Goal {
     }
 
     var progressAccessibilityLabel: String {
-        "\(title) plant. \(growthStage.spokenName). \(GardenMetrics.focusedDurationSpoken(seconds: totalFocusedDuration)). \(area.title). \(GardenMetrics.sessionCountSpoken(sessionCount))"
+        let areaPart = areasDisplayLabel.isEmpty ? "No life areas" : areasDisplayLabel
+        return "\(title) plant. \(growthStage.spokenName). \(GardenMetrics.focusedDurationSpoken(seconds: totalFocusedDuration)). \(areaPart). \(GardenMetrics.sessionCountSpoken(sessionCount))"
+    }
+
+    /// Backfill `areasRaw` from legacy `area` once. Safe to call repeatedly.
+    func migrateAreasIfNeeded() {
+        guard !areasMigrated else { return }
+        areasRaw = Self.encodeAreas([area])
+        areasMigrated = true
+    }
+
+    static func normalized(_ areas: [GoalArea]) -> [GoalArea] {
+        var seen = Set<GoalArea>()
+        var result: [GoalArea] = []
+        for area in GoalArea.allCases {
+            if areas.contains(area), !seen.contains(area) {
+                seen.insert(area)
+                result.append(area)
+            }
+        }
+        return result
+    }
+
+    static func encodeAreas(_ areas: [GoalArea]) -> String {
+        normalized(areas).map(\.rawValue).joined(separator: "|")
+    }
+
+    static func decodeAreas(_ raw: String) -> [GoalArea] {
+        guard !raw.isEmpty else { return [] }
+        let parsed = raw.split(separator: "|").compactMap { GoalArea(rawValue: String($0)) }
+        return normalized(parsed)
     }
 }
 
@@ -239,7 +322,7 @@ final class GoalTask {
             title: title,
             durationMinutes: durationMinutes,
             energyRequired: energyRequired,
-            area: goal?.area.title ?? "",
+            area: goal?.areas.map(\.title).joined(separator: " · ") ?? "",
             goal: goal?.title ?? "",
             goalPriority: goal?.priority ?? .normal,
             lastFocusedAt: lastFocusedAt
@@ -249,7 +332,14 @@ final class GoalTask {
 
 extension Collection where Element == GoalTask {
     var recommendationItems: [TaskItem] {
-        let active = filter(\.isActive)
+        recommendationItems(matching: .anything)
+    }
+
+    func recommendationItems(matching scope: RecommendationScope) -> [TaskItem] {
+        let active = filter(\.isActive).filter { task in
+            guard let goal = task.goal else { return scope.mode == .anything }
+            return scope.includes(goal)
+        }
         var recency: [UUID: Date] = [:]
         var scanned = Set<UUID>()
         return active.map { task in

@@ -1,0 +1,7 @@
+source_commit=415d10849267d885aaa274e1137b2b032f6893e0
+schema=V2-M9
+goal_properties=id,title,area,priority,createdAt,plantVariantRaw,tasks,focusSessions
+absent=areasRaw,areasMigrated
+goalID=AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
+taskID=11111111-2222-3333-4444-555555555555
+sessionID=99999999-8888-7777-6666-555555555555

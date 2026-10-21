@@ -44,13 +44,17 @@ enum EnergyLevel: String, CaseIterable, Identifiable, Codable {
 
 struct HomeView: View {
     @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
+    @Query(sort: \Goal.createdAt) private var goals: [Goal]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var selectedTime: TimeOption?
     @State private var selectedEnergy: EnergyLevel?
+    @State private var recommendationScope = RecommendationScope.anything
     @State private var recommendationInput: RecommendationInput?
     @State private var greeting = HomeGreeting.text()
+    @State private var showingAreaSheet = false
+    @State private var showingGoalSheet = false
 
     private var canProceed: Bool {
         selectedTime != nil && selectedEnergy != nil
@@ -60,30 +64,83 @@ struct HomeView: View {
         dynamicTypeSize.isAccessibilitySize
     }
 
+    private var scopedTasks: [TaskItem] {
+        persistedTasks.recommendationItems(matching: recommendationScope)
+    }
+
+    private var scopedActiveTaskCount: Int {
+        scopedTasks.count
+    }
+
+    private var selectedGoalTitle: String? {
+        guard let id = recommendationScope.selectedGoalID else { return nil }
+        return goals.first(where: { $0.id == id })?.title
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Spacer(minLength: 48)
+            Spacer(minLength: 28)
+            scopeSection
+            Spacer(minLength: 28)
             timeSection
-            Spacer(minLength: 40)
+            Spacer(minLength: 32)
             energySection
-            Spacer(minLength: 48)
+            Spacer(minLength: 36)
             NextPrimaryAction(title: "WHAT'S NEXT?", isEnabled: canProceed) {
                 guard let time = selectedTime, let energy = selectedEnergy else { return }
-                recommendationInput = RecommendationInput(time: time, energy: energy)
+                recommendationScope.validate(against: goals)
+                recommendationInput = RecommendationInput(
+                    time: time,
+                    energy: energy,
+                    scope: recommendationScope
+                )
             }
+            .accessibilityIdentifier("whatsNextButton")
         }
         .nextScrollableCanvas()
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $recommendationInput) { input in
-            RecommendationView(
+            let tasks = persistedTasks.recommendationItems(matching: input.scope)
+            let ranked = RecommendationEngine().rankedRecommendations(
+                tasks: tasks,
                 availableTime: input.time,
-                energy: input.energy,
-                tasks: persistedTasks.recommendationItems,
-                hasAnyTasks: !persistedTasks.isEmpty
+                energy: input.energy
+            )
+            RecommendationView(
+                recommendations: ranked,
+                hasAnyTasks: !persistedTasks.isEmpty,
+                emptyKind: RecommendationEmptyKindResolver.resolve(
+                    scope: input.scope,
+                    scopedActiveTaskCount: tasks.count,
+                    rankedCount: ranked.count,
+                    hasAnyTasksInApp: !persistedTasks.isEmpty
+                )
             )
         }
-        .onAppear { refreshGreeting() }
+        .sheet(isPresented: $showingAreaSheet) {
+            SearchableAreaSelectSheet { area in
+                recommendationScope.selectedArea = area
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(NextTheme.canvas)
+        }
+        .sheet(isPresented: $showingGoalSheet) {
+            SearchableGoalSelectSheet(goals: goals) { goal in
+                recommendationScope.selectedGoalID = goal.id
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(NextTheme.canvas)
+        }
+        .onAppear {
+            refreshGreeting()
+            recommendationScope.validate(against: goals)
+        }
+        .onChange(of: goals.map(\.id)) { _, _ in
+            recommendationScope.validate(against: goals)
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             refreshGreeting()
@@ -109,6 +166,50 @@ struct HomeView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("homeGreeting")
         }
+    }
+
+    private var scopeSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("What would you like to focus on?")
+                .nextFont(17)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker("Focus scope", selection: Binding(
+                get: { recommendationScope.mode },
+                set: { recommendationScope.selectMode($0) }
+            )) {
+                ForEach(RecommendationScopeMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("recommendationScopePicker")
+
+            switch recommendationScope.mode {
+            case .anything:
+                EmptyView()
+            case .lifeArea:
+                SearchableSingleSelectField(
+                    label: "LIFE AREA",
+                    placeholder: "Choose an area",
+                    displayValue: recommendationScope.selectedArea?.title,
+                    accessibilityIdentifier: "scopeAreaField"
+                ) {
+                    showingAreaSheet = true
+                }
+            case .specificGoal:
+                SearchableSingleSelectField(
+                    label: "GOAL",
+                    placeholder: "Choose a goal",
+                    displayValue: selectedGoalTitle,
+                    accessibilityIdentifier: "scopeGoalField"
+                ) {
+                    showingGoalSheet = true
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var timeSection: some View {
@@ -173,6 +274,7 @@ private struct RecommendationInput: Hashable, Identifiable {
     let id = UUID()
     let time: TimeOption
     let energy: EnergyLevel
+    let scope: RecommendationScope
 }
 
 #Preview {

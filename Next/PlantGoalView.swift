@@ -15,11 +15,11 @@ struct PlantGoalView: View {
     @FocusState private var titleFocused: Bool
 
     @State private var title = ""
-    @State private var selectedArea: GoalArea?
+    @State private var selectedAreas: Set<GoalArea> = []
     @State private var selectedPriority: GoalPriority = .normal
 
     private var canPlant: Bool {
-        NextInput.trimmedTitle(title) != nil && selectedArea != nil
+        NextInput.trimmedTitle(title) != nil
     }
 
     var body: some View {
@@ -45,14 +45,11 @@ struct PlantGoalView: View {
                     .padding(.top, 18)
                     .accessibilityLabel("Goal title")
 
-                Text("AREA")
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.8)
-                    .foregroundStyle(NextTheme.secondary)
+                LifeAreaMultiSelectField(selected: $selectedAreas)
                     .padding(.top, 40)
-
-                areaGrid
-                    .padding(.top, 8)
+                    .onChange(of: selectedAreas) { _, _ in
+                        titleFocused = false
+                    }
 
                 Text("PRIORITY")
                     .nextFont(13, weight: .medium, relativeTo: .caption)
@@ -88,26 +85,6 @@ struct PlantGoalView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
     }
 
-    private var areaGrid: some View {
-        LazyVGrid(columns: areaColumns, spacing: 4) {
-            ForEach(GoalArea.allCases) { area in
-                SelectionOption(
-                    title: area.title,
-                    isSelected: selectedArea == area
-                ) {
-                    titleFocused = false
-                    selectedArea = area
-                }
-            }
-        }
-    }
-
-    private var areaColumns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize
-            ? [GridItem(.flexible())]
-            : [GridItem(.flexible()), GridItem(.flexible())]
-    }
-
     @ViewBuilder
     private func choiceStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
@@ -120,11 +97,11 @@ struct PlantGoalView: View {
     private var plantAction: some View {
         NextPrimaryAction(title: "PLANT GOAL →", isEnabled: canPlant) {
             titleFocused = false
-            guard let area = selectedArea, let trimmed = NextInput.trimmedTitle(title) else { return }
+            guard let trimmed = NextInput.trimmedTitle(title) else { return }
             modelContext.insert(
                 Goal(
                     title: trimmed,
-                    area: area,
+                    areas: Array(selectedAreas),
                     priority: selectedPriority,
                     plantVariant: PlantVariant.next(in: modelContext)
                 )

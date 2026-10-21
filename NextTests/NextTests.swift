@@ -3508,4 +3508,328 @@ struct ReleaseCandidateTests {
     }
 }
 
+// MARK: - V3-M1 Goal Organization & Recommendation Filtering
+
+struct MultiAreaGoalTests {
+    @MainActor
+    @Test func zeroOneAndMultiAreaPersistAndDeduplicate() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+
+        let none = Goal(title: "Open", areas: [], priority: .normal)
+        let one = Goal(title: "MCAT", areas: [.education], priority: .high)
+        let multi = Goal(
+            title: "Build Next",
+            areas: [.creative, .career, .creative, .education],
+            priority: .high
+        )
+        [none, one, multi].forEach(context.insert)
+        try context.save()
+
+        #expect(none.areas.isEmpty)
+        #expect(none.areasRaw.isEmpty)
+        #expect(none.areasMigrated)
+        #expect(one.areas == [.education])
+        #expect(multi.areas == [.education, .career, .creative])
+        #expect(multi.areasDisplayLabel == "EDUCATION · CAREER · CREATIVE")
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 3)
+    }
+
+    @MainActor
+    @Test func legacySingleAreaBackfillPreservesIdentityTasksAndSessions() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-v3m1-migrate-\(UUID().uuidString).store")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let goalID = UUID()
+        let taskID = UUID()
+        let sessionID = UUID()
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: url)
+            let context = ModelContext(container)
+            let goal = Goal(
+                id: goalID,
+                title: "Study for MCAT",
+                area: .education,
+                priority: .high
+            )
+            // Simulate a pre-multi-area row after lightweight property defaults land.
+            goal.areasRaw = ""
+            goal.areasMigrated = false
+            context.insert(goal)
+            let task = GoalTask(
+                id: taskID,
+                title: "Review amino acids",
+                durationMinutes: 30,
+                energyRequired: .good,
+                goal: goal
+            )
+            context.insert(task)
+            context.insert(
+                FocusSession(
+                    id: sessionID,
+                    plannedDurationSeconds: 1800,
+                    focusedDurationSeconds: 1800,
+                    endedNaturally: true,
+                    taskWasFinished: false,
+                    taskTitleSnapshot: "Review amino acids",
+                    goalTitleSnapshot: "Study for MCAT",
+                    goal: goal,
+                    task: task
+                )
+            )
+            try context.save()
+            #expect(goal.areasMigrated == false)
+            #expect(goal.areas == [.education])
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: url)
+        let context = ModelContext(reopened)
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        let tasks = try context.fetch(FetchDescriptor<GoalTask>())
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+
+        #expect(goals.count == 1)
+        #expect(goals.first?.id == goalID)
+        #expect(goals.first?.title == "Study for MCAT")
+        #expect(goals.first?.priority == .high)
+        #expect(goals.first?.areasMigrated == true)
+        #expect(goals.first?.areas == [.education])
+        #expect(goals.first?.areasRaw == "education")
+        #expect(tasks.count == 1)
+        #expect(tasks.first?.id == taskID)
+        #expect(tasks.first?.goal?.id == goalID)
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.id == sessionID)
+        #expect(sessions.first?.goalTitleSnapshot == "Study for MCAT")
+        #expect(sessions.first?.taskTitleSnapshot == "Review amino acids")
+        #expect(goals.first?.totalFocusedDuration == 1800)
+        #expect(goals.first?.sessionCount == 1)
+    }
+
+    @MainActor
+    @Test func editingAreasDoesNotResetProgressAndCancelPreservesSelectionSemantics() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Build Next", areas: [.creative], priority: .normal)
+        context.insert(goal)
+        let task = GoalTask(title: "Sketch", durationMinutes: 30, energyRequired: .good, goal: goal)
+        context.insert(task)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 7200,
+                focusedDurationSeconds: 7200,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal,
+                task: task
+            )
+        )
+        try context.save()
+
+        let beforeMinutes = goal.totalFocusedDuration
+        let beforeSessions = goal.sessionCount
+        let beforeID = goal.id
+
+        try PlanningStore.updateGoal(
+            goal,
+            title: goal.title,
+            areas: [.creative, .career, .education],
+            priority: .high,
+            context: context
+        )
+
+        #expect(goal.id == beforeID)
+        #expect(goal.areas == [.education, .career, .creative])
+        #expect(goal.totalFocusedDuration == beforeMinutes)
+        #expect(goal.sessionCount == beforeSessions)
+        #expect(goal.tasks.count == 1)
+
+        // "Cancel" path: mutate in-memory draft only; persisted areas stay until save.
+        let draft = Set(goal.areas)
+        var canceled = draft
+        canceled.remove(.education)
+        canceled.insert(.fitness)
+        #expect(goal.areas == [.education, .career, .creative])
+        #expect(canceled != draft)
+    }
+
+    @MainActor
+    @Test func multiAreaGoalAppearsOnceAndDoesNotDoubleCountProgress() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Build Next", areas: [.creative, .career], priority: .high)
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 3600,
+                focusedDurationSeconds: 3600,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.sessionCount == 1)
+        #expect(goals.first?.totalFocusedDuration == 3600)
+        #expect(goals.first?.areasDisplayLabel == "CAREER · CREATIVE")
+    }
+}
+
+struct RecommendationScopeTests {
+    private let engine = RecommendationEngine()
+
+    @MainActor
+    @Test func anythingLifeAreaAndSpecificGoalFilteringPreserveRankingAndDedup() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let next = Goal(title: "Build Next", areas: [.creative, .career], priority: .high)
+        let mcat = Goal(title: "MCAT", areas: [.education], priority: .high)
+        let portfolio = Goal(title: "Portfolio", areas: [.career], priority: .normal)
+        [next, mcat, portfolio].forEach(context.insert)
+
+        let sketch = GoalTask(title: "Sketch garden", durationMinutes: 30, energyRequired: .good, goal: next)
+        let amino = GoalTask(title: "Amino acids", durationMinutes: 30, energyRequired: .good, goal: mcat)
+        let page = GoalTask(title: "Update page", durationMinutes: 30, energyRequired: .good, goal: portfolio)
+        [sketch, amino, page].forEach(context.insert)
+        try context.save()
+
+        let allTasks = try context.fetch(FetchDescriptor<GoalTask>())
+        let anything = allTasks.recommendationItems(matching: .anything)
+        #expect(Set(anything.map(\.id)).count == 3)
+        #expect(anything.count == 3)
+
+        var careerScope = RecommendationScope()
+        careerScope.mode = .lifeArea
+        careerScope.selectedArea = .career
+        let careerItems = allTasks.recommendationItems(matching: careerScope)
+        #expect(Set(careerItems.map(\.title)) == ["Sketch garden", "Update page"])
+        #expect(careerItems.count == 2)
+
+        var creativeScope = RecommendationScope()
+        creativeScope.mode = .lifeArea
+        creativeScope.selectedArea = .creative
+        let creativeItems = allTasks.recommendationItems(matching: creativeScope)
+        #expect(creativeItems.map(\.title) == ["Sketch garden"])
+
+        var goalScope = RecommendationScope()
+        goalScope.mode = .specificGoal
+        goalScope.selectedGoalID = mcat.id
+        let goalItems = allTasks.recommendationItems(matching: goalScope)
+        #expect(goalItems.map(\.title) == ["Amino acids"])
+
+        let rankedAnything = engine.rankedRecommendations(
+            tasks: anything,
+            availableTime: .thirty,
+            energy: .good
+        ).map(\.task.title)
+        let rankedCareer = engine.rankedRecommendations(
+            tasks: careerItems,
+            availableTime: .thirty,
+            energy: .good
+        ).map(\.task.title)
+        #expect(rankedAnything.count == 3)
+        #expect(Set(rankedAnything) == Set(["Sketch garden", "Amino acids", "Update page"]))
+        // Filtered ranking is the Anything order with out-of-scope titles removed — no reordering rules.
+        #expect(rankedCareer == rankedAnything.filter { ["Sketch garden", "Update page"].contains($0) })
+        #expect(Set(rankedCareer).count == rankedCareer.count)
+    }
+
+    @Test func notThisOneStaysWithinScopeAndEmptyDoesNotFallback() {
+        let engine = RecommendationEngine()
+        let a = TaskItem(
+            title: "A",
+            durationMinutes: 30,
+            energyRequired: .good,
+            area: "Career",
+            goal: "Next",
+            goalPriority: .high
+        )
+        let b = TaskItem(
+            title: "B",
+            durationMinutes: 30,
+            energyRequired: .good,
+            area: "Career",
+            goal: "Portfolio",
+            goalPriority: .normal
+        )
+        let ranked = engine.rankedRecommendations(tasks: [a, b], availableTime: .thirty, energy: .good)
+        #expect(ranked.count == 2)
+        #expect(ranked[0].task.title != ranked[1].task.title)
+
+        #expect(
+            RecommendationEmptyKindResolver.resolve(
+                scope: .anything,
+                scopedActiveTaskCount: 0,
+                rankedCount: 0,
+                hasAnyTasksInApp: true
+            ) == .scopeHasNoActiveTasks
+        )
+        var needsArea = RecommendationScope()
+        needsArea.mode = .lifeArea
+        #expect(
+            RecommendationEmptyKindResolver.resolve(
+                scope: needsArea,
+                scopedActiveTaskCount: 0,
+                rankedCount: 0,
+                hasAnyTasksInApp: true
+            ) == .scopeNeedsSelection
+        )
+        #expect(
+            RecommendationEmptyKindResolver.resolve(
+                scope: .anything,
+                scopedActiveTaskCount: 2,
+                rankedCount: 0,
+                hasAnyTasksInApp: true
+            ) == .noneFitTimeAndEnergy
+        )
+    }
+
+    @Test func deletedGoalInvalidatesSpecificScope() {
+        var scope = RecommendationScope()
+        scope.mode = .specificGoal
+        let missing = UUID()
+        scope.selectedGoalID = missing
+        scope.validate(against: [])
+        #expect(scope.selectedGoalID == nil)
+        #expect(scope.isReady == false)
+    }
+
+    @Test func changingScopeModeClearsForeignSelection() {
+        var scope = RecommendationScope()
+        scope.mode = .lifeArea
+        scope.selectedArea = .career
+        scope.selectMode(.specificGoal)
+        #expect(scope.selectedArea == nil)
+        #expect(scope.selectedGoalID == nil)
+        #expect(scope.isReady == false)
+    }
+
+    @Test func rankingHierarchyUnchangedWithinFilteredCandidates() {
+        let engine = RecommendationEngine()
+        let high = TaskItem(
+            title: "High",
+            durationMinutes: 30,
+            energyRequired: .good,
+            area: "Education",
+            goal: "MCAT",
+            goalPriority: .high
+        )
+        let normal = TaskItem(
+            title: "Normal",
+            durationMinutes: 45,
+            energyRequired: .good,
+            area: "Education",
+            goal: "Book",
+            goalPriority: .normal
+        )
+        let ranked = engine.rankedRecommendations(
+            tasks: [normal, high],
+            availableTime: .sixty,
+            energy: .good
+        )
+        #expect(ranked.map(\.task.title) == ["High", "Normal"])
+    }
+}
+
 

@@ -134,11 +134,13 @@ struct GardenView: View {
                     .foregroundStyle(NextTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(goal.area.title.uppercased())
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.2)
-                    .foregroundStyle(NextTheme.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !goal.areasDisplayLabel.isEmpty {
+                    Text(goal.areasDisplayLabel)
+                        .nextFont(13, weight: .medium, relativeTo: .caption)
+                        .tracking(1.2)
+                        .foregroundStyle(NextTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Text(goal.progressMetricsLabel)
                     .nextFont(13, weight: .medium, relativeTo: .caption)

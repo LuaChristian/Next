@@ -141,11 +141,14 @@ struct GoalDetailView: View {
                 .foregroundStyle(NextTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(goal.area.title.uppercased())
-                .nextFont(13, weight: .medium, relativeTo: .caption)
-                .tracking(1.8)
-                .foregroundStyle(NextTheme.secondary)
-                .padding(.top, 10)
+            if !goal.areasDisplayLabel.isEmpty {
+                Text(goal.areasDisplayLabel)
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
+                    .tracking(1.8)
+                    .foregroundStyle(NextTheme.secondary)
+                    .padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text(goal.priority.title.uppercased() + " PRIORITY")
                 .nextFont(13, weight: .medium, relativeTo: .caption)

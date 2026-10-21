@@ -12,6 +12,7 @@ struct RecommendationView: View {
 
     let recommendations: [RankedRecommendation]
     let hasAnyTasks: Bool
+    let emptyKind: RecommendationEmptyKind?
 
     @State private var currentIndex = 0
     @State private var focusTask: TaskItem?
@@ -20,7 +21,8 @@ struct RecommendationView: View {
         availableTime: TimeOption,
         energy: EnergyLevel,
         tasks: [TaskItem],
-        hasAnyTasks: Bool? = nil
+        hasAnyTasks: Bool? = nil,
+        emptyKind: RecommendationEmptyKind? = nil
     ) {
         recommendations = RecommendationEngine().rankedRecommendations(
             tasks: tasks,
@@ -28,11 +30,17 @@ struct RecommendationView: View {
             energy: energy
         )
         self.hasAnyTasks = hasAnyTasks ?? !tasks.isEmpty
+        self.emptyKind = emptyKind
     }
 
-    init(recommendations: [RankedRecommendation], hasAnyTasks: Bool? = nil) {
+    init(
+        recommendations: [RankedRecommendation],
+        hasAnyTasks: Bool? = nil,
+        emptyKind: RecommendationEmptyKind? = nil
+    ) {
         self.recommendations = recommendations
         self.hasAnyTasks = hasAnyTasks ?? !recommendations.isEmpty
+        self.emptyKind = emptyKind
     }
 
     private var currentRecommendation: RankedRecommendation? {
@@ -47,6 +55,11 @@ struct RecommendationView: View {
 
     private var hasAnotherRecommendation: Bool {
         currentIndex + 1 < recommendations.count
+    }
+
+    private var resolvedEmptyKind: RecommendationEmptyKind {
+        if let emptyKind { return emptyKind }
+        return hasAnyTasks ? .noneFitTimeAndEnergy : .noTasksInApp
     }
 
     var body: some View {
@@ -68,6 +81,8 @@ struct RecommendationView: View {
 
             if currentTask != nil {
                 actions
+            } else {
+                emptyActions
             }
         }
         .nextScrollableCanvas()
@@ -102,16 +117,19 @@ struct RecommendationView: View {
                 .foregroundStyle(NextTheme.botanical)
                 .padding(.top, 16)
 
-            Text(task.area.uppercased())
-                .nextFont(13, weight: .medium, relativeTo: .caption)
-                .tracking(1.8)
-                .foregroundStyle(NextTheme.secondary)
-                .padding(.top, 36)
+            if !task.area.isEmpty {
+                Text(task.area.uppercased())
+                    .nextFont(13, weight: .medium, relativeTo: .caption)
+                    .tracking(1.8)
+                    .foregroundStyle(NextTheme.secondary)
+                    .padding(.top, 36)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text(task.goal)
                 .nextFont(17)
                 .foregroundStyle(NextTheme.ink)
-                .padding(.top, 8)
+                .padding(.top, task.area.isEmpty ? 36 : 8)
                 .fixedSize(horizontal: false, vertical: true)
 
             NextHairline()
@@ -137,23 +155,31 @@ struct RecommendationView: View {
     }
 
     private var emptyContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(hasAnyTasks ? "NOTHING FITS RIGHT NOW" : "NO TASKS YET")
+        let kind = resolvedEmptyKind
+        return VStack(alignment: .leading, spacing: 16) {
+            Text(kind.headline)
                 .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(2.2)
                 .foregroundStyle(NextTheme.secondary)
+                .accessibilityIdentifier("recommendationEmptyHeadline")
 
-            Text(
-                hasAnyTasks
-                    ? "None of your tasks fit this time and energy combination."
-                    : "Plant a goal and add a task before asking what's next."
-            )
-            .nextFont(28, relativeTo: .title)
-            .foregroundStyle(NextTheme.ink)
-            .fixedSize(horizontal: false, vertical: true)
+            Text(kind.message)
+                .nextFont(28, relativeTo: .title)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private var emptyActions: some View {
+        Button("Choose a different focus") {
+            dismiss()
+        }
+        .nextFont(16)
+        .foregroundStyle(NextTheme.interactiveAccent)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .accessibilityIdentifier("chooseDifferentFocus")
     }
 
     private var actions: some View {
@@ -198,6 +224,6 @@ struct RecommendationView: View {
 
 #Preview("Empty") {
     NavigationStack {
-        RecommendationView(recommendations: [])
+        RecommendationView(recommendations: [], emptyKind: .scopeNeedsSelection)
     }
 }

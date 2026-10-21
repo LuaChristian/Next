@@ -151,7 +151,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(goalField.waitForExistence(timeout: 2))
         goalField.tap()
         goalField.typeText("Study for MCAT")
-        app.buttons["Education"].tap()
+        selectLifeAreas(["Education"], in: app)
         app.buttons["High"].tap()
         app.buttons["PLANT GOAL →"].tap()
 
@@ -234,6 +234,22 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Study for MCAT"].exists)
     }
 
+    private func selectLifeAreas(_ titles: [String], in app: XCUIApplication) {
+        let field = app.descendants(matching: .any)["lifeAreasField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
+        field.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["lifeAreasSheet"].waitForExistence(timeout: 2))
+        for title in titles {
+            let raw = title.lowercased()
+            let row = app.descendants(matching: .any)["lifeArea-\(raw)"]
+            XCTAssertTrue(row.waitForExistence(timeout: 2), "Missing life area \(title)")
+            row.tap()
+        }
+        app.buttons["lifeAreasDone"].tap()
+        XCTAssertTrue(app.buttons["PLANT GOAL →"].waitForExistence(timeout: 2)
+                      || app.buttons["SAVE GOAL →"].waitForExistence(timeout: 2))
+    }
+
     private func plantMCATGoalAndAminoTask(in app: XCUIApplication) {
         app.tabBars.buttons["Garden"].tap()
         XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
@@ -243,7 +259,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(goalField.waitForExistence(timeout: 2))
         goalField.tap()
         goalField.typeText("Study for MCAT")
-        app.buttons["Education"].tap()
+        selectLifeAreas(["Education"], in: app)
         app.buttons["High"].tap()
         app.buttons["PLANT GOAL →"].tap()
 
@@ -750,7 +766,14 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(goalField.waitForExistence(timeout: 2))
         replaceText(in: goalField, with: "MCAT prep")
         dismissKeyboard(in: app)
-        app.buttons["Career"].tap()
+        // Replace Education with Career via multi-select.
+        let areasField = app.descendants(matching: .any)["lifeAreasField"]
+        XCTAssertTrue(areasField.waitForExistence(timeout: 2))
+        areasField.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["lifeAreasSheet"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["lifeArea-education"].tap()
+        app.descendants(matching: .any)["lifeArea-career"].tap()
+        app.buttons["lifeAreasDone"].tap()
         app.buttons["SAVE GOAL →"].tap()
 
         XCTAssertTrue(app.staticTexts["MCAT prep"].waitForExistence(timeout: 2))
@@ -1039,7 +1062,6 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(goalField.waitForExistence(timeout: 2))
         goalField.tap()
         goalField.typeText("     ")
-        app.buttons["Education"].tap()
         XCTAssertFalse(app.buttons["PLANT GOAL →"].isEnabled)
     }
 
@@ -1928,6 +1950,220 @@ final class NextUITests: XCTestCase {
         large.terminate()
     }
 
+    // MARK: - V3-M1 Goal Organization & Recommendation Filtering
+
+    @MainActor
+    func testM1MultiAreaPlantEditAndScopeFiltering() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["recommendationScopePicker"].exists)
+
+        // Anything remains available and deterministic.
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // Life area without selection → explicit empty, no silent fallback.
+        app.segmentedControls.buttons["Life area"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scopeAreaField"].waitForExistence(timeout: 2))
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["CHOOSE A FOCUS"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["chooseDifferentFocus"].exists)
+        app.buttons["chooseDifferentFocus"].tap()
+
+        // Choose Career — multi-area Build Next + Portfolio eligible; no duplicates via Not This One.
+        app.descendants(matching: .any)["scopeAreaField"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scopeAreaSheet"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["scopeArea-career"].tap()
+        XCTAssertTrue(app.staticTexts["Career"].waitForExistence(timeout: 2))
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        var seen = Set<String>()
+        for _ in 0..<6 {
+            if let title = firstRecommendationTitle(in: app) {
+                XCTAssertFalse(seen.contains(title), "Duplicate candidate \(title)")
+                seen.insert(title)
+            }
+            let next = app.buttons["Not this one"]
+            if next.exists && next.isEnabled {
+                next.tap()
+            } else {
+                break
+            }
+        }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // Specific goal sheet uses stable IDs — identical titles remain distinct.
+        app.segmentedControls.buttons["Specific goal"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scopeGoalField"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["scopeGoalField"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scopeGoalSheet"].waitForExistence(timeout: 2))
+        let twinRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scopeGoal-"))
+        XCTAssertGreaterThanOrEqual(twinRows.count, 2)
+        app.buttons["Cancel"].tap()
+
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Build Next"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["EDUCATION · CAREER · CREATIVE"].exists
+                      || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'EDUCATION' AND label CONTAINS 'CAREER'")).firstMatch.exists)
+        let buildRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", "gardenGoal-Build Next"))
+        XCTAssertEqual(buildRows.count, 1)
+    }
+
+    @MainActor
+    func testM1LifeAreaSearchKeepsSelection() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        app.buttons["+ PLANT A GOAL"].tap()
+        let goalField = app.textFields["Goal title"]
+        XCTAssertTrue(goalField.waitForExistence(timeout: 2))
+        goalField.tap()
+        goalField.typeText("Multi Area Goal")
+
+        app.descendants(matching: .any)["lifeAreasField"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["lifeAreasSheet"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["lifeArea-career"].tap()
+        app.descendants(matching: .any)["lifeArea-creative"].tap()
+        let search = app.textFields["Search life areas"]
+        XCTAssertTrue(search.waitForExistence(timeout: 2))
+        search.tap()
+        search.typeText("Edu")
+        XCTAssertTrue(app.descendants(matching: .any)["lifeArea-education"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["lifeArea-education"].tap()
+        // Career/Creative remain selected even though filtered out of the visible list.
+        app.buttons["lifeAreasDone"].tap()
+        let areasField = app.descendants(matching: .any)["lifeAreasField"]
+        XCTAssertTrue(areasField.waitForExistence(timeout: 2))
+        let value = areasField.value as? String ?? ""
+        XCTAssertTrue(
+            value == "Education · Career · Creative" || (value.contains("Career") && value.contains("Education")),
+            "Expected multi-area selection to survive search; got \(value)"
+        )
+        app.buttons["PLANT GOAL →"].tap()
+        XCTAssertTrue(app.staticTexts["Multi Area Goal"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testM1VisualReview() throws {
+        let review = GoalOrganizationCapture(self)
+
+        func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "UITEST_SEED_MULTI_AREA",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_REMINDER", "off"
+            ] + extra
+            app.launch()
+            return app
+        }
+
+        // 01 — Plant a Goal, multiple areas selected, Light
+        let plant = launch("light")
+        plant.tabBars.buttons["Garden"].tap()
+        plant.buttons["+ PLANT A GOAL"].tap()
+        let plantField = plant.textFields["Goal title"]
+        XCTAssertTrue(plantField.waitForExistence(timeout: 2))
+        plantField.tap()
+        plantField.typeText("Ship V3")
+        selectLifeAreas(["Creative", "Career", "Education"], in: plant)
+        review.capture(plant, "01 Plant a Goal — multiple areas Light")
+        plant.terminate()
+
+        // 02 — Edit Goal, multiple areas, Dark
+        let edit = launch("dark")
+        edit.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(edit.staticTexts["Build Next"].waitForExistence(timeout: 2))
+        edit.staticTexts["Build Next"].tap()
+        tapGoalOptions(in: edit)
+        edit.buttons["Edit Goal"].tap()
+        XCTAssertTrue(edit.staticTexts["EDIT GOAL"].waitForExistence(timeout: 2))
+        review.capture(edit, "02 Edit Goal — multiple areas Dark")
+
+        // 03 — Searchable multi-select area sheet
+        edit.descendants(matching: .any)["lifeAreasField"].tap()
+        XCTAssertTrue(edit.descendants(matching: .any)["lifeAreasSheet"].waitForExistence(timeout: 2))
+        review.capture(edit, "03 Searchable multi-select area sheet")
+        edit.buttons["lifeAreasDone"].tap()
+        edit.terminate()
+
+        // 04 — Garden with multi-area goal, Light
+        let garden = launch("light")
+        garden.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(garden.staticTexts["Build Next"].waitForExistence(timeout: 2))
+        review.capture(garden, "04 Garden — multi-area goal Light")
+        garden.terminate()
+
+        // 05 — Home, Anything
+        let homeAnything = launch("light")
+        XCTAssertTrue(homeAnything.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(homeAnything, "05 Home — Anything selected")
+
+        // 06 — Home, Life area selected
+        homeAnything.segmentedControls.buttons["Life area"].tap()
+        homeAnything.descendants(matching: .any)["scopeAreaField"].tap()
+        XCTAssertTrue(homeAnything.descendants(matching: .any)["scopeAreaSheet"].waitForExistence(timeout: 2))
+        homeAnything.descendants(matching: .any)["scopeArea-career"].tap()
+        XCTAssertTrue(homeAnything.staticTexts["Career"].waitForExistence(timeout: 2))
+        review.capture(homeAnything, "06 Home — Life area selected")
+
+        // 07 — Searchable goal-selection sheet
+        homeAnything.segmentedControls.buttons["Specific goal"].tap()
+        homeAnything.descendants(matching: .any)["scopeGoalField"].tap()
+        XCTAssertTrue(homeAnything.descendants(matching: .any)["scopeGoalSheet"].waitForExistence(timeout: 2))
+        review.capture(homeAnything, "07 Searchable goal-selection sheet")
+        let firstGoal = homeAnything.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scopeGoal-")
+        ).element(boundBy: 0)
+        XCTAssertTrue(firstGoal.waitForExistence(timeout: 2))
+        firstGoal.tap()
+
+        // 08 — Home, Specific goal selected
+        XCTAssertTrue(homeAnything.descendants(matching: .any)["scopeGoalField"].waitForExistence(timeout: 2))
+        review.capture(homeAnything, "08 Home — Specific goal selected")
+
+        // 09 — Empty filtered recommendation state
+        homeAnything.segmentedControls.buttons["Life area"].tap()
+        homeAnything.descendants(matching: .any)["scopeAreaField"].tap()
+        homeAnything.descendants(matching: .any)["scopeArea-finance"].tap()
+        homeAnything.buttons["15 min"].tap()
+        homeAnything.buttons["Ready"].tap()
+        homeAnything.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(
+            homeAnything.staticTexts["NOTHING IN THIS FOCUS"].waitForExistence(timeout: 2)
+                || homeAnything.staticTexts["NOTHING FITS RIGHT NOW"].waitForExistence(timeout: 2)
+                || homeAnything.staticTexts["CHOOSE A FOCUS"].waitForExistence(timeout: 2)
+        )
+        review.capture(homeAnything, "09 Empty filtered recommendation state")
+        homeAnything.terminate()
+
+        // 10 — Large Dynamic Type selection sheet
+        let large = launch("light", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        large.tabBars.buttons["Garden"].tap()
+        large.buttons["+ PLANT A GOAL"].tap()
+        XCTAssertTrue(large.descendants(matching: .any)["lifeAreasField"].waitForExistence(timeout: 3))
+        reveal(large.descendants(matching: .any)["lifeAreasField"], in: large)
+        large.descendants(matching: .any)["lifeAreasField"].tap()
+        XCTAssertTrue(large.descendants(matching: .any)["lifeAreasSheet"].waitForExistence(timeout: 2))
+        review.capture(large, "10 Large Dynamic Type selection sheet")
+        large.terminate()
+    }
+
+    private func firstRecommendationTitle(in app: XCUIApplication) -> String? {
+        let candidates = ["Sketch the garden", "Update project description", "Review amino acids", "Review flashcards", "Clean your space", "Twin A workout", "Twin B stretch"]
+        return candidates.first { app.staticTexts[$0].exists }
+    }
+
     /// Replacement capture for enabled-state DONE safe-area spacing (shot 03 only).
     @MainActor
     func testSmartRemindersEnabledSpacingScreenshot() throws {
@@ -2426,5 +2662,16 @@ private struct WalkthroughCapture {
     init(_ test: XCTestCase) { self.test = test }
     func capture(_ app: XCUIApplication, _ name: String) {
         ReviewShotStore.capture(app, named: name, into: Self.directory, test: test)
+    }
+}
+
+private struct GoalOrganizationCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M1-Goal-Organization"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
     }
 }
