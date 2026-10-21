@@ -118,14 +118,14 @@ struct GoalDetailView: View {
         Group {
             if compactPlant {
                 VStack(alignment: .leading, spacing: 16) {
-                    PlantView(variant: goal.plantVariant, stage: goal.growthStage)
+                    PlantView(species: goal.botanicalSpecies, stage: goal.growthStage)
                         .frame(width: 56, height: 76)
                     headerCopy(goal)
                 }
             } else {
                 HStack(alignment: .top, spacing: 20) {
                     headerCopy(goal)
-                    PlantView(variant: goal.plantVariant, stage: goal.growthStage)
+                    PlantView(species: goal.botanicalSpecies, stage: goal.growthStage)
                         .frame(width: 108, height: 148)
                 }
             }

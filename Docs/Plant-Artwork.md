@@ -3,13 +3,16 @@
 Next maps each **plant variant × growth stage** to artwork through `PlantArtwork`.
 Garden growth, FocusSession persistence, and Goal identity are unchanged.
 
-**Resolution order (V3-M7):**
+**Resolution order (V3-M8):**
 
-1. Asset-catalog image `plant-{variant}-{stage}` when present  
-2. Pixel-art species via `PixelPlantPresentation.species(for:)` (production maps every variant to the reference **fern**)  
-3. Built-in Canvas botanical fallback (`PlantDrawing`) when mapping returns `nil`  
+1. Asset-catalog image `plant-{species}-{stage}` when present  
+   (`fern` · `lavender` · `rosemary` · `flowering` × stage tokens)  
+2. Legacy silhouette assets `plant-{broadLeaf|…}-{stage}` still recognized  
+3. Pixel-art catalog via `PixelPlantPresentation.pixelSpecies(for:)`  
+4. Canvas botanical silhouette fallback when pixel mapping returns `nil`  
 
-Canvas botanical code remains for fallback. Fern stage showcase / UITest fixtures are DEBUG-only.
+User selection is stored in `Goal.plantVariantRaw` as the botanical species id.
+Legacy silhouette ids resolve to **fern**. No destructive schema migration.
 
 ## Naming
 

@@ -10,49 +10,37 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Species (extensible in V3-M8)
+// MARK: - Species alias
 
-/// Pixel-art plant species. Distinct from `PlantVariant` (persisted Goal identity).
-enum PixelPlantSpecies: String, CaseIterable, Equatable, Identifiable {
-    case fern
-
-    var id: Self { self }
-
-    var reviewName: String {
-        switch self {
-        case .fern: "Fern"
-        }
-    }
-}
+/// Pixel-art species identity — same catalog as user-selectable `BotanicalSpecies`.
+typealias PixelPlantSpecies = BotanicalSpecies
 
 // MARK: - Presentation bridge
 
-/// Maps persisted `PlantVariant` → pixel species without schema migration.
-///
-/// Production (V3-M7): every variant presents as the approved reference fern.
-/// `plantVariantRaw` identities are unchanged. V3-M8 can replace `species(for:)`
-/// with per-variant or user-selected mapping without touching Garden layout.
-///
-/// Catalog assets still win in `PlantArtwork.resolve`. Returning `nil` yields
-/// the retained Canvas botanical fallback.
+/// Maps a botanical species to pixel artwork.
+/// Catalog assets still win in `PlantArtwork.resolve`. Returning `nil` yields Canvas.
 enum PixelPlantPresentation {
-    /// Production mapping. Extensible in V3-M8 without redesigning Garden.
-    static func species(for variant: PlantVariant) -> PixelPlantSpecies? {
+    /// Production: every catalog species has pixel artwork.
+    static func pixelSpecies(for species: BotanicalSpecies) -> PixelPlantSpecies? {
         #if DEBUG
-        if let override = testSpeciesOverride {
-            return override(variant)
+        if let override = testPixelOverride {
+            return override(species)
         }
         #endif
-        _ = variant
-        return .fern
+        return species
+    }
+
+    /// Legacy silhouette → botanical species (existing goals / tests).
+    static func species(for variant: PlantVariant) -> PixelPlantSpecies? {
+        pixelSpecies(for: BotanicalSpecies.resolved(stored: variant.rawValue))
     }
 
     #if DEBUG
     /// Test-only seam to exercise Canvas fallback. Never read in Release.
-    static var testSpeciesOverride: ((PlantVariant) -> PixelPlantSpecies?)?
+    static var testPixelOverride: ((BotanicalSpecies) -> PixelPlantSpecies?)?
 
     static func resetTestOverrides() {
-        testSpeciesOverride = nil
+        testPixelOverride = nil
     }
     #endif
 }
@@ -98,7 +86,7 @@ struct PixelGrid: Equatable {
 
 enum PixelPlantPalette {
     /// Index legend:
-    /// 0 clear · 1 soil · 2 seed/soil-dark · 3 stem · 4 frond deep · 5 frond mid · 6 frond light · 7 soft tip
+    /// 0 clear · 1 soil · 2 seed · 3 stem · 4–6 foliage · 7 tip · 8 lavender · 9 bloom
     static func color(index: UInt8, colorScheme: ColorScheme) -> Color? {
         guard index > 0 else { return nil }
         let dark = colorScheme == .dark
@@ -145,6 +133,18 @@ enum PixelPlantPalette {
                     ? UIColor(red: 0.70, green: 0.82, blue: 0.70, alpha: 1)
                     : UIColor(red: 0.55, green: 0.68, blue: 0.52, alpha: 1)
             )
+        case 8: // lavender
+            return Color(
+                uiColor: dark
+                    ? UIColor(red: 0.72, green: 0.62, blue: 0.82, alpha: 1)
+                    : UIColor(red: 0.55, green: 0.45, blue: 0.62, alpha: 1)
+            )
+        case 9: // bloom / petal
+            return Color(
+                uiColor: dark
+                    ? UIColor(red: 0.86, green: 0.70, blue: 0.72, alpha: 1)
+                    : UIColor(red: 0.72, green: 0.48, blue: 0.50, alpha: 1)
+            )
         default:
             return nil
         }
@@ -155,10 +155,7 @@ enum PixelPlantPalette {
 
 enum PixelPlantCatalog {
     static func grid(species: PixelPlantSpecies, stage: GardenGrowthStage) -> PixelGrid {
-        switch species {
-        case .fern:
-            return FernPixelArt.grid(stage: stage)
-        }
+        BotanicalPlaceholderArt.grid(species: species, stage: stage)
     }
 }
 

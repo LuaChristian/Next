@@ -2,96 +2,70 @@
 //  PlantArtwork.swift
 //  Next
 //
-//  Lightweight resolver: PlantVariant + GardenGrowthStage -> plant artwork.
-//  Asset-catalog images win when present; Canvas/Path drawings remain the fallback.
-//  Growth, FocusSession persistence, and Goal identity never depend on this file.
+//  Resolver: botanical species + growth stage → artwork.
+//  Order: asset catalog → pixel catalog → Canvas silhouette fallback.
+//  Growth math and Goal relationships never depend on this file.
 //
-//  ── Replacing botanical artwork ─────────────────────────────────────────────
-//
-//  1. Export each illustration as a transparent-background PNG (or PDF vector).
-//  2. In Assets.xcassets, create an Image Set named exactly:
-//
-//         plant-{variant}-{stage}
-//
-//     Variants (Goal.plantVariantRaw / PlantVariant.rawValue):
-//         broadLeaf | narrowLeaf | branching | roundedLeaf
-//
-//     Stages (spoken name, lowercase):
-//         beginning | establishing | developing | flourishing | mature
-//
-//     Full set of 20 names:
-//         plant-broadLeaf-beginning
-//         plant-broadLeaf-establishing
-//         plant-broadLeaf-developing
-//         plant-broadLeaf-flourishing
-//         plant-broadLeaf-mature
-//         plant-narrowLeaf-beginning
-//         plant-narrowLeaf-establishing
-//         plant-narrowLeaf-developing
-//         plant-narrowLeaf-flourishing
-//         plant-narrowLeaf-mature
-//         plant-branching-beginning
-//         plant-branching-establishing
-//         plant-branching-developing
-//         plant-branching-flourishing
-//         plant-branching-mature
-//         plant-roundedLeaf-beginning
-//         plant-roundedLeaf-establishing
-//         plant-roundedLeaf-developing
-//         plant-roundedLeaf-flourishing
-//         plant-roundedLeaf-mature
-//
-//  3. Prefer a portrait aspect near 3:4 (matches Garden / Goal Detail frames).
-//     PlantView uses aspect-fit; extra margins are fine.
-//  4. Keep the background fully transparent. Do not bake a cream canvas into
-//     the asset — Garden and Goal Detail supply the canvas color.
-//  5. For dark mode later: add Dark Appearance variants in the same Image Set.
-//     Do not rely on template tinting; full-color artwork is drawn as-is.
-//  6. Drop images into the asset catalog. No code change is required when the
-//     name matches. Missing assets continue to use the Canvas fallback.
-//  7. To force Canvas again, remove or rename the Image Set.
-//
-//  Single switch point: PlantArtwork.resolve / PlantView.body.
+//  Asset names (optional replacements):
+//      plant-{species}-{stage}
+//      species: fern | lavender | rosemary | flowering
+//      stage:   beginning | establishing | developing | flourishing | mature
 //
 
 import SwiftUI
 import UIKit
 
 enum PlantArtwork {
-    /// Resolved source for one variant × stage pair.
     enum Source: Equatable {
-        /// Named asset-catalog image. Drawn without template tinting.
         case asset(String)
-        /// Programmatic cozy pixel-art species (V3-M7+).
-        case pixel(PixelPlantSpecies)
-        /// Existing Canvas/Path botanical illustration (retained as fallback).
+        case pixel(BotanicalSpecies)
         case canvas
     }
 
-    /// Test seam. When non-nil, used instead of `UIImage(named:)`.
     static var assetAvailability: ((String) -> Bool)?
 
-    /// Deterministic asset-catalog name for a variant × stage.
+    static func assetName(species: BotanicalSpecies, stage: GardenGrowthStage) -> String {
+        "plant-\(species.rawValue)-\(stage.artworkToken)"
+    }
+
+    /// Legacy silhouette asset names (still recognized if present).
     static func assetName(variant: PlantVariant, stage: GardenGrowthStage) -> String {
         "plant-\(variant.rawValue)-\(stage.artworkToken)"
     }
 
-    /// Deterministic key used by tests and accessibility identifiers.
-    static func signature(variant: PlantVariant, stage: GardenGrowthStage) -> String {
-        "\(variant.rawValue)-\(stage.rawValue)"
+    static func signature(species: BotanicalSpecies, stage: GardenGrowthStage) -> String {
+        "\(species.rawValue)-\(stage.rawValue)"
     }
 
-    /// Maps identity + growth to artwork.
-    /// Order: catalog asset → pixel species (when mapped) → Canvas botanical.
-    static func resolve(variant: PlantVariant, stage: GardenGrowthStage) -> Source {
-        let name = assetName(variant: variant, stage: stage)
-        if hasAsset(named: name) {
-            return .asset(name)
+    static func signature(variant: PlantVariant, stage: GardenGrowthStage) -> String {
+        signature(species: BotanicalSpecies.resolved(stored: variant.rawValue), stage: stage)
+    }
+
+    /// Primary resolve path for Garden / Goal Detail.
+    static func resolve(species: BotanicalSpecies, stage: GardenGrowthStage) -> Source {
+        let speciesName = assetName(species: species, stage: stage)
+        if hasAsset(named: speciesName) {
+            return .asset(speciesName)
         }
-        if let species = PixelPlantPresentation.species(for: variant) {
-            return .pixel(species)
+        // Legacy silhouette assets (pre-M8) still win when present.
+        let legacyName = assetName(variant: species.canvasSilhouette, stage: stage)
+        if hasAsset(named: legacyName) {
+            return .asset(legacyName)
+        }
+        if let pixel = PixelPlantPresentation.pixelSpecies(for: species) {
+            return .pixel(pixel)
         }
         return .canvas
+    }
+
+    /// Compatibility for call sites still holding a PlantVariant.
+    /// Legacy silhouette assets are checked before botanical remapping.
+    static func resolve(variant: PlantVariant, stage: GardenGrowthStage) -> Source {
+        let legacyName = assetName(variant: variant, stage: stage)
+        if hasAsset(named: legacyName) {
+            return .asset(legacyName)
+        }
+        return resolve(species: BotanicalSpecies.resolved(stored: variant.rawValue), stage: stage)
     }
 
     static func resetTestOverrides() {
@@ -110,7 +84,6 @@ enum PlantArtwork {
 }
 
 extension GardenGrowthStage {
-    /// Stable token used in asset-catalog names (spoken name, lowercase).
     var artworkToken: String {
         switch self {
         case .seedling: "beginning"

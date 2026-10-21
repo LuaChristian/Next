@@ -143,7 +143,7 @@ struct OnboardingState: Equatable {
                 title: pending.title,
                 area: pending.area,
                 priority: .normal,
-                plantVariant: .next(among: planted)
+                botanicalSpecies: .fern
             )
             context.insert(goal)
             planted.append(goal)

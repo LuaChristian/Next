@@ -14,9 +14,17 @@ enum PlanningStore {
         title: String,
         area: GoalArea,
         priority: GoalPriority,
+        botanicalSpecies: BotanicalSpecies? = nil,
         context: ModelContext
     ) throws {
-        try updateGoal(goal, title: title, areas: [area], priority: priority, context: context)
+        try updateGoal(
+            goal,
+            title: title,
+            areas: [area],
+            priority: priority,
+            botanicalSpecies: botanicalSpecies,
+            context: context
+        )
     }
 
     static func updateGoal(
@@ -24,12 +32,16 @@ enum PlanningStore {
         title: String,
         areas: [GoalArea],
         priority: GoalPriority,
+        botanicalSpecies: BotanicalSpecies? = nil,
         context: ModelContext
     ) throws {
         guard let trimmed = NextInput.trimmedTitle(title) else { return }
         goal.title = trimmed
         goal.areas = areas
         goal.priority = priority
+        if let botanicalSpecies {
+            goal.botanicalSpecies = botanicalSpecies
+        }
         try context.save()
     }
 

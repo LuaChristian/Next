@@ -2,34 +2,43 @@
 //  PlantView.swift
 //  Next
 //
-//  Reusable botanical renderer. Identity is the variant; growth is the stage.
-//  Artwork comes from PlantArtwork (asset catalog when present, Canvas otherwise).
-//  Surfaces (Garden, Goal Detail, Home Garden) only pass variant + stage.
+//  Reusable botanical renderer. Species identity + growth stage → artwork.
+//  Surfaces (Garden, Goal Detail) pass botanicalSpecies + stage.
 //
 
 import SwiftUI
 import UIKit
 
 struct PlantView: View {
-    let variant: PlantVariant
+    let species: BotanicalSpecies
     let stage: GardenGrowthStage
     @Environment(\.colorScheme) private var colorScheme
 
+    init(species: BotanicalSpecies, stage: GardenGrowthStage) {
+        self.species = species
+        self.stage = stage
+    }
+
+    /// Compatibility wrapper for legacy silhouette call sites.
+    init(variant: PlantVariant, stage: GardenGrowthStage) {
+        self.species = BotanicalSpecies.resolved(stored: variant.rawValue)
+        self.stage = stage
+    }
+
     var body: some View {
         Group {
-            switch PlantArtwork.resolve(variant: variant, stage: stage) {
+            switch PlantArtwork.resolve(species: species, stage: stage) {
             case .asset(let name):
                 Image(name)
                     .resizable()
                     .interpolation(.none)
                     .aspectRatio(contentMode: .fit)
-                    // Full-color / line artwork is drawn as authored — never template-tinted.
-            case .pixel(let species):
-                PixelPlantView(species: species, stage: stage)
+            case .pixel(let pixelSpecies):
+                PixelPlantView(species: pixelSpecies, stage: stage)
             case .canvas:
                 Canvas { context, size in
                     PlantDrawing.draw(
-                        variant: variant,
+                        variant: species.canvasSilhouette,
                         stage: stage,
                         in: &context,
                         size: size,
@@ -40,7 +49,7 @@ struct PlantView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityHidden(true)
-        .accessibilityIdentifier("plant-\(PlantArtwork.signature(variant: variant, stage: stage))")
+        .accessibilityIdentifier("plant-\(PlantArtwork.signature(species: species, stage: stage))")
     }
 }
 
@@ -349,9 +358,9 @@ enum PlantDrawing {
 
 struct BotanicalPlantView: View {
     let stage: GardenGrowthStage
-    var variant: PlantVariant = .broadLeaf
+    var species: BotanicalSpecies = .fern
 
     var body: some View {
-        PlantView(variant: variant, stage: stage)
+        PlantView(species: species, stage: stage)
     }
 }

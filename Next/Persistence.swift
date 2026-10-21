@@ -139,20 +139,20 @@ enum NextPersistence {
     static let multiAreaSeedArgument = "UITEST_SEED_MULTI_AREA"
 
     static func seed(_ context: ModelContext) {
-        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .broadLeaf)
+        let mcat = Goal(title: "Study for MCAT", area: .education, priority: .high, botanicalSpecies: .fern)
         context.insert(mcat)
         context.insert(GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: mcat))
         context.insert(GoalTask(title: "Review flashcards", durationMinutes: 15, energyRequired: .low, goal: mcat))
 
-        let personal = Goal(title: "Keep your space organized", area: .personal, priority: .normal, plantVariant: .narrowLeaf)
+        let personal = Goal(title: "Keep your space organized", area: .personal, priority: .normal, botanicalSpecies: .lavender)
         context.insert(personal)
         context.insert(GoalTask(title: "Clean your space", durationMinutes: 15, energyRequired: .low, goal: personal))
 
-        let career = Goal(title: "Improve programming", area: .career, priority: .normal, plantVariant: .branching)
+        let career = Goal(title: "Improve programming", area: .career, priority: .normal, botanicalSpecies: .rosemary)
         context.insert(career)
         context.insert(GoalTask(title: "Coding practice", durationMinutes: 45, energyRequired: .ready, goal: career))
 
-        let creative = Goal(title: "Build something", area: .creative, priority: .normal, plantVariant: .roundedLeaf)
+        let creative = Goal(title: "Build something", area: .creative, priority: .normal, botanicalSpecies: .flowering)
         context.insert(creative)
         context.insert(GoalTask(title: "Work on personal project", durationMinutes: 60, energyRequired: .good, goal: creative))
 
@@ -160,8 +160,8 @@ enum NextPersistence {
     }
 
     static func seedGrowthStages(_ context: ModelContext) {
-        func plant(_ title: String, minutes: Double, variant: PlantVariant) {
-            let goal = Goal(title: title, area: .education, priority: .normal, plantVariant: variant)
+        func plant(_ title: String, minutes: Double, species: BotanicalSpecies) {
+            let goal = Goal(title: title, area: .education, priority: .normal, botanicalSpecies: species)
             context.insert(goal)
             guard minutes > 0 else { return }
             context.insert(
@@ -175,11 +175,11 @@ enum NextPersistence {
             )
         }
 
-        plant("Beginning study", minutes: 0, variant: .broadLeaf)
-        plant("First growth", minutes: 30, variant: .narrowLeaf)
-        plant("Young plant", minutes: 120, variant: .branching)
-        plant("Growing plant", minutes: 300, variant: .roundedLeaf)
-        plant("Mature plant", minutes: 600, variant: .broadLeaf)
+        plant("Beginning study", minutes: 0, species: .fern)
+        plant("First growth", minutes: 30, species: .lavender)
+        plant("Young plant", minutes: 120, species: .rosemary)
+        plant("Growing plant", minutes: 300, species: .flowering)
+        plant("Mature plant", minutes: 600, species: .fern)
         try? context.save()
     }
 

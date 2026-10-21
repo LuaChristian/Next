@@ -17,6 +17,7 @@ struct PlantGoalView: View {
     @State private var title = ""
     @State private var selectedAreas: Set<GoalArea> = []
     @State private var selectedPriority: GoalPriority = .normal
+    @State private var selectedSpecies: BotanicalSpecies = .fern
 
     private var canPlant: Bool {
         NextInput.trimmedTitle(title) != nil
@@ -69,6 +70,12 @@ struct PlantGoalView: View {
                     }
                 }
                 .padding(.top, 8)
+
+                BotanicalSpeciesPicker(selection: $selectedSpecies)
+                    .padding(.top, 32)
+                    .onChange(of: selectedSpecies) { _, _ in
+                        titleFocused = false
+                    }
             }
             .padding(.horizontal, NextTheme.pagePadding)
             .padding(.top, 12)
@@ -103,7 +110,7 @@ struct PlantGoalView: View {
                     title: trimmed,
                     areas: Array(selectedAreas),
                     priority: selectedPriority,
-                    plantVariant: PlantVariant.next(in: modelContext)
+                    botanicalSpecies: selectedSpecies
                 )
             )
             try? modelContext.save()

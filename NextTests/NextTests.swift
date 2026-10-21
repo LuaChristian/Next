@@ -4058,12 +4058,12 @@ struct PlantArtworkResolutionTests {
 
     @Test func missingAssetsFallBackToCanvasWhenPixelMappingNil() {
         PlantArtwork.assetAvailability = { _ in false }
-        PixelPlantPresentation.testSpeciesOverride = { _ in nil }
+        PixelPlantPresentation.testPixelOverride = { _ in nil }
         defer { PlantArtwork.resetTestOverrides() }
 
-        for variant in PlantVariant.allCases {
+        for species in BotanicalSpecies.allCases {
             for stage in GardenGrowthStage.allCases {
-                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .canvas)
+                #expect(PlantArtwork.resolve(species: species, stage: stage) == .canvas)
             }
         }
     }
@@ -4084,9 +4084,9 @@ struct PlantArtworkResolutionTests {
             PlantArtwork.resolve(variant: .roundedLeaf, stage: .mature)
                 == .asset("plant-roundedLeaf-mature")
         )
-        // No asset → production fern pixel mapping.
+        // No asset → botanical species pixel mapping (legacy silhouette → fern).
         #expect(PlantArtwork.resolve(variant: .narrowLeaf, stage: .sprout) == .pixel(.fern))
-        #expect(PlantArtwork.resolve(variant: .branching, stage: .growing) == .pixel(.fern))
+        #expect(PlantArtwork.resolve(species: .lavender, stage: .growing) == .pixel(.lavender))
     }
 
     @Test func resolutionIsDeterministic() {
@@ -4102,14 +4102,20 @@ struct PlantArtworkResolutionTests {
         }
     }
 
-    @Test func noCatalogAssetsMeansPixelFernFoundation() {
-        // Production catalog currently ships no plant-* images; V3-M7 uses fern pixels.
+    @Test func noCatalogAssetsMeansPixelCatalog() {
         PlantArtwork.resetTestOverrides()
-        for variant in PlantVariant.allCases {
+        for species in BotanicalSpecies.allCases {
             for stage in GardenGrowthStage.allCases {
-                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .pixel(.fern))
+                #expect(PlantArtwork.resolve(species: species, stage: stage) == .pixel(species))
             }
         }
+    }
+
+    @Test func speciesAssetNamesFollowConvention() {
+        #expect(PlantArtwork.assetName(species: .fern, stage: .seedling) == "plant-fern-beginning")
+        #expect(PlantArtwork.assetName(species: .lavender, stage: .mature) == "plant-lavender-mature")
+        #expect(PlantArtwork.assetName(species: .rosemary, stage: .young) == "plant-rosemary-developing")
+        #expect(PlantArtwork.assetName(species: .flowering, stage: .growing) == "plant-flowering-flourishing")
     }
 }
 
@@ -4157,36 +4163,148 @@ struct PixelPlantArtTests {
     }
 
     @MainActor
-    @Test func existingPlantIdentitiesRemainUnchangedAfterPixelPresentation() throws {
+    @Test func existingLegacyVariantsResolveToFernSpecies() throws {
         let context = ModelContext(try NextPersistence.makeInMemoryContainer())
         let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .narrowLeaf)
         context.insert(goal)
         try context.save()
 
-        #expect(goal.plantVariant == .narrowLeaf)
         #expect(goal.plantVariantRaw == PlantVariant.narrowLeaf.rawValue)
-        #expect(PlantArtwork.resolve(variant: goal.plantVariant, stage: .seedling) == .pixel(.fern))
-        // Identity preserved even though visual is fern.
-        #expect(goal.plantVariant == .narrowLeaf)
+        #expect(goal.botanicalSpecies == .fern)
+        #expect(PlantArtwork.resolve(species: goal.botanicalSpecies, stage: .seedling) == .pixel(.fern))
     }
 
     @Test func canvasFallbackAvailableWhenPixelMappingNil() {
         PlantArtwork.assetAvailability = { _ in false }
-        PixelPlantPresentation.testSpeciesOverride = { _ in nil }
+        PixelPlantPresentation.testPixelOverride = { _ in nil }
         defer { PlantArtwork.resetTestOverrides() }
 
-        #expect(PlantArtwork.resolve(variant: .broadLeaf, stage: .mature) == .canvas)
-        #expect(PlantArtwork.resolve(variant: .roundedLeaf, stage: .young) == .canvas)
+        #expect(PlantArtwork.resolve(species: .fern, stage: .mature) == .canvas)
+        #expect(PlantArtwork.resolve(species: .lavender, stage: .young) == .canvas)
     }
 
     @Test func integerScaleNeverZeroForPositiveFrames() {
         let grid = FernPixelArt.grid(stage: .sprout)
         #expect(grid.width > 0)
         #expect(grid.height > 0)
-        // Renderer uses max(1, floor(...)) — mirrored here for the contract.
         let size = CGSize(width: 48, height: 68)
         let scale = max(1, floor(min(size.width / CGFloat(grid.width), size.height / CGFloat(grid.height))))
         #expect(scale >= 1)
+    }
+
+    @Test func everyCatalogSpeciesHasFiveDistinctStages() {
+        for species in BotanicalSpecies.allCases {
+            let grids = GardenGrowthStage.allCases.map {
+                PixelPlantCatalog.grid(species: species, stage: $0)
+            }
+            #expect(grids.count == 5)
+            for grid in grids {
+                #expect(grid.width == FernPixelArt.canvasWidth)
+                #expect(grid.height == FernPixelArt.canvasHeight)
+            }
+            for i in 0..<grids.count {
+                for j in (i + 1)..<grids.count {
+                    #expect(grids[i] != grids[j])
+                }
+            }
+        }
+    }
+}
+
+struct BotanicalSpeciesTests {
+    @Test func newGoalDefaultsToFern() {
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        #expect(goal.botanicalSpecies == .fern)
+        #expect(goal.plantVariantRaw == BotanicalSpecies.fern.rawValue)
+    }
+
+    @Test func unknownStoredSpeciesFallsBackToFern() {
+        #expect(BotanicalSpecies.resolved(stored: "orchid") == .fern)
+        #expect(BotanicalSpecies.resolved(stored: "") == .fern)
+        #expect(BotanicalSpecies.resolved(stored: "broadLeaf") == .fern)
+    }
+
+    @MainActor
+    @Test func selectionSurvivesRelaunchViaPersistedRaw() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(
+            title: "Build Next",
+            area: .creative,
+            priority: .normal,
+            botanicalSpecies: .rosemary
+        )
+        context.insert(goal)
+        try context.save()
+        let id = goal.id
+
+        let reloaded = try context.fetch(FetchDescriptor<Goal>()).first { $0.id == id }
+        #expect(reloaded?.botanicalSpecies == .rosemary)
+        #expect(reloaded?.plantVariantRaw == "rosemary")
+    }
+
+    @MainActor
+    @Test func changingSpeciesPreservesFocusProgress() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, botanicalSpecies: .fern)
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 120 * 60,
+                focusedDurationSeconds: 120 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        let beforeDuration = goal.totalFocusedDuration
+        let beforeStage = goal.growthStage
+        #expect(beforeStage == .young)
+
+        goal.botanicalSpecies = .lavender
+        try context.save()
+
+        #expect(goal.botanicalSpecies == .lavender)
+        #expect(goal.totalFocusedDuration == beforeDuration)
+        #expect(goal.growthStage == beforeStage)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+    }
+
+    @MainActor
+    @Test func updateGoalSpeciesDoesNotDuplicateSessions() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, botanicalSpecies: .fern)
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        try PlanningStore.updateGoal(
+            goal,
+            title: "Study for MCAT",
+            areas: [.education],
+            priority: .high,
+            botanicalSpecies: .flowering,
+            context: context
+        )
+
+        #expect(goal.botanicalSpecies == .flowering)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(goal.growthStage == .sprout)
+    }
+
+    @Test func allSpeciesSelectable() {
+        #expect(BotanicalSpecies.allCases.map(\.rawValue) == [
+            "fern", "lavender", "rosemary", "flowering"
+        ])
     }
 }
 

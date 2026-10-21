@@ -20,6 +20,7 @@ struct EditGoalView: View {
     @State private var title = ""
     @State private var selectedAreas: Set<GoalArea> = []
     @State private var selectedPriority: GoalPriority = .normal
+    @State private var selectedSpecies: BotanicalSpecies = .fern
     @State private var didLoad = false
 
     private var goal: Goal? {
@@ -77,6 +78,15 @@ struct EditGoalView: View {
                     }
                 }
                 .padding(.top, 8)
+
+                BotanicalSpeciesPicker(
+                    selection: $selectedSpecies,
+                    previewStage: goal?.growthStage ?? .young
+                )
+                .padding(.top, 32)
+                .onChange(of: selectedSpecies) { _, _ in
+                    titleFocused = false
+                }
             }
             .padding(.horizontal, NextTheme.pagePadding)
             .padding(.top, 12)
@@ -115,6 +125,7 @@ struct EditGoalView: View {
                 title: title,
                 areas: Array(selectedAreas),
                 priority: selectedPriority,
+                botanicalSpecies: selectedSpecies,
                 context: modelContext
             )
             dismiss()
@@ -130,6 +141,7 @@ struct EditGoalView: View {
         title = goal.title
         selectedAreas = Set(goal.areas)
         selectedPriority = goal.priority
+        selectedSpecies = goal.botanicalSpecies
         didLoad = true
     }
 }

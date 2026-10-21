@@ -112,7 +112,8 @@ final class Goal {
         area: GoalArea,
         priority: GoalPriority,
         createdAt: Date = Date(),
-        plantVariant: PlantVariant = .broadLeaf,
+        botanicalSpecies: BotanicalSpecies = .fern,
+        plantVariant: PlantVariant? = nil,
         tasks: [GoalTask] = [],
         focusSessions: [FocusSession] = []
     ) {
@@ -123,7 +124,8 @@ final class Goal {
         self.areasMigrated = true
         self.priority = priority
         self.createdAt = createdAt
-        self.plantVariantRaw = plantVariant.rawValue
+        // Prefer explicit botanical species; legacy plantVariant still accepted.
+        self.plantVariantRaw = plantVariant?.rawValue ?? botanicalSpecies.rawValue
         self.tasks = tasks
         self.focusSessions = focusSessions
     }
@@ -134,7 +136,8 @@ final class Goal {
         areas: [GoalArea],
         priority: GoalPriority,
         createdAt: Date = Date(),
-        plantVariant: PlantVariant = .broadLeaf,
+        botanicalSpecies: BotanicalSpecies = .fern,
+        plantVariant: PlantVariant? = nil,
         tasks: [GoalTask] = [],
         focusSessions: [FocusSession] = []
     ) {
@@ -146,7 +149,7 @@ final class Goal {
         self.areasMigrated = true
         self.priority = priority
         self.createdAt = createdAt
-        self.plantVariantRaw = plantVariant.rawValue
+        self.plantVariantRaw = plantVariant?.rawValue ?? botanicalSpecies.rawValue
         self.tasks = tasks
         self.focusSessions = focusSessions
     }
@@ -253,8 +256,15 @@ final class Goal {
 }
 
 extension Goal {
+    /// Canvas silhouette identity. When `plantVariantRaw` stores a botanical
+    /// species id (V3-M8+), maps to that species' canvas fallback silhouette.
     var plantVariant: PlantVariant {
-        get { PlantVariant(rawValue: plantVariantRaw) ?? .broadLeaf }
+        get {
+            if let variant = PlantVariant(rawValue: plantVariantRaw) {
+                return variant
+            }
+            return BotanicalSpecies.resolved(stored: plantVariantRaw).canvasSilhouette
+        }
         set { plantVariantRaw = newValue.rawValue }
     }
 }

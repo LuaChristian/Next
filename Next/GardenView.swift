@@ -122,7 +122,7 @@ struct GardenView: View {
 
     private func goalRow(_ goal: Goal) -> some View {
         HStack(alignment: .center, spacing: compactPlant ? 12 : 20) {
-            PlantView(variant: goal.plantVariant, stage: goal.growthStage)
+            PlantView(species: goal.botanicalSpecies, stage: goal.growthStage)
                 .frame(
                     width: compactPlant ? 48 : 72,
                     height: compactPlant ? 68 : 104

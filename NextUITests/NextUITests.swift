@@ -1191,6 +1191,113 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testBotanicalCollectionsVisualReview() throws {
+        let review = BotanicalCollectionsCapture(self)
+
+        // 01 — Plant selection during goal creation.
+        var app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 3))
+        app.buttons["+ PLANT A GOAL"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["botanicalSpeciesPicker"].waitForExistence(timeout: 3))
+        reveal(app.descendants(matching: .any)["botanicalSpecies-lavender"], in: app)
+        review.capture(app, "01 Plant selection during goal creation")
+
+        // Stay in create for a moment, then dismiss via back if available.
+        if app.navigationBars.buttons.firstMatch.exists {
+            app.navigationBars.buttons.firstMatch.tap()
+        } else {
+            app.swipeDown(velocity: .fast)
+        }
+        app.terminate()
+
+        // 03 + 05 — Garden with different species (light).
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "03 Garden showing different species")
+        review.capture(app, "05 Light-mode Garden")
+
+        // 04 — Goal Detail with selected species (before edit).
+        let youngRow = app.descendants(matching: .any)["gardenGoal-Young plant"]
+        reveal(youngRow, in: app)
+        XCTAssertTrue(youngRow.waitForExistence(timeout: 3))
+        youngRow.tap()
+        XCTAssertTrue(app.staticTexts["Young plant"].waitForExistence(timeout: 3))
+        review.capture(app, "04 Goal Detail with a selected species")
+
+        // 02 — Plant selection during goal editing.
+        let options = app.buttons["goalOptions"]
+        XCTAssertTrue(options.waitForExistence(timeout: 3))
+        if !options.isHittable {
+            app.swipeDown()
+        }
+        options.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let edit = app.buttons["Edit Goal"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 3))
+        edit.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["botanicalSpeciesPicker"].waitForExistence(timeout: 3))
+        reveal(app.descendants(matching: .any)["botanicalSpecies-rosemary"], in: app)
+        review.capture(app, "02 Plant selection during goal editing")
+        app.terminate()
+
+        // 06 — Dark-mode Garden.
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "06 Dark-mode Garden")
+        app.terminate()
+
+        // 08 — Large Dynamic Type.
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        if #available(iOS 17.0, *) {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        }
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "08 Large Dynamic Type layout")
+    }
+
+    @MainActor
+    func testBotanicalCollectionsSmallScreenReview() throws {
+        let review = BotanicalCollectionsCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "07 Small-screen layout")
+    }
+
+    @MainActor
     func testSessionRecoveryVisualReview() throws {
         let review = SessionRecoveryCapture(self)
         let suite = "next.uitest.recovery-review-\(UUID().uuidString)"
@@ -3389,6 +3496,17 @@ private struct SessionRecoveryCapture {
 private struct PixelArtGrowthCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M7-Pixel-Art-Growth"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct BotanicalCollectionsCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M8-Botanical-Collections"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
