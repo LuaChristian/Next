@@ -1000,6 +1000,114 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testPomodoroRemainsOptionalAndSimpleFocusIsDefault() throws {
+        let suite = "next.uitest.pomodoro-default-\(UUID().uuidString)"
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_DEFAULTS_SUITE", suite]
+        app.launch()
+
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Enable Pomodoro"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["pomodoroPhase"].exists)
+        XCTAssertTrue(timerIsNear(minutes: 25, in: app) || timerIsNear(minutes: 30, in: app) || timerIsNear(minutes: 20, in: app))
+
+        tapFocusSettings(in: app)
+        XCTAssertTrue(app.buttons["Set up Pomodoro"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Switch to Simple Focus"].exists)
+        app.buttons["DONE"].tap()
+    }
+
+    @MainActor
+    func testPomodoroPresetsCustomizeAndPersistAcrossLaunches() throws {
+        let suite = "next.uitest.pomodoro-persist-\(UUID().uuidString)"
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_DEFAULTS_SUITE", suite]
+        app.launch()
+
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Enable Pomodoro"].waitForExistence(timeout: 2))
+        app.buttons["Enable Pomodoro"].tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["pomodoroConfigSheet"].waitForExistence(timeout: 3)
+            || app.buttons["BEGIN POMODORO"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.buttons["pomodoroPreset_recommended"].value as? String, "Selected")
+
+        app.buttons["pomodoroPreset_deepWork"].tap()
+        XCTAssertEqual(app.buttons["pomodoroPreset_deepWork"].value as? String, "Selected")
+        app.buttons["pomodoroFocusStepper_increment"].tap()
+        XCTAssertTrue(app.staticTexts["pomodoroFocusStepper_value"].label.contains("55"))
+        app.buttons["BEGIN POMODORO"].tap()
+
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].label.uppercased().contains("FOCUS"))
+        XCTAssertTrue(app.staticTexts["pomodoroTotals"].waitForExistence(timeout: 2))
+
+        app.terminate()
+        app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_DEFAULTS_SUITE", suite]
+        app.launch()
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        // Simple Focus remains the default entry — Pomodoro is not auto-enabled.
+        XCTAssertTrue(app.buttons["Enable Pomodoro"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["pomodoroPhase"].exists)
+
+        app.buttons["Enable Pomodoro"].tap()
+        XCTAssertTrue(app.buttons["BEGIN POMODORO"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["pomodoroFocusStepper_value"].label.contains("55"))
+        XCTAssertTrue(app.staticTexts["pomodoroBreakStepper_value"].label.contains("10"))
+        XCTAssertTrue(app.staticTexts["pomodoroRoundsStepper_value"].label.contains("3"))
+    }
+
+    @MainActor
+    func testPomodoroVisualReview() throws {
+        let review = PomodoroCapture(self)
+        let suite = "next.uitest.pomodoro-review-\(UUID().uuidString)"
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_DEFAULTS_SUITE", suite,
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+
+        navigateToFirstRecommendation(in: app)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Enable Pomodoro"].waitForExistence(timeout: 2))
+        review.capture(app, "01 Simple Focus default entry")
+
+        tapFocusSettings(in: app)
+        XCTAssertTrue(app.buttons["Set up Pomodoro"].waitForExistence(timeout: 2))
+        review.capture(app, "02 Focus settings with optional Pomodoro")
+        app.buttons["Set up Pomodoro"].tap()
+
+        XCTAssertTrue(app.buttons["BEGIN POMODORO"].waitForExistence(timeout: 3))
+        review.capture(app, "03 Pomodoro config — Recommended selected")
+
+        app.buttons["pomodoroPreset_gentleStart"].tap()
+        review.capture(app, "04 Pomodoro config — Gentle Start")
+        app.buttons["pomodoroPreset_deepWork"].tap()
+        review.capture(app, "05 Pomodoro config — Deep Work")
+        app.buttons["resetPomodoroRecommended"].tap()
+        review.capture(app, "06 Pomodoro config — Reset to Recommended")
+
+        app.buttons["BEGIN POMODORO"].tap()
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 3))
+        review.capture(app, "07 Pomodoro focus round active")
+
+        tapFocusSettings(in: app)
+        XCTAssertTrue(app.buttons["Switch to Simple Focus"].waitForExistence(timeout: 2))
+        review.capture(app, "08 Focus settings while Pomodoro active")
+        app.buttons["DONE"].tap()
+
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        review.capture(app, "09 Completion after Pomodoro — YES or NOT YET")
+    }
+
+    @MainActor
     func testVisibleTaskManagementOverflow() throws {
         let app = launchManagementApp()
         openGardenGoal("Study for MCAT", in: app)
@@ -2956,6 +3064,17 @@ private struct FocusHistoryCapture {
 private struct HomeExperienceCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M3-Home-Experience"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct PomodoroCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M4-Optional-Pomodoro"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

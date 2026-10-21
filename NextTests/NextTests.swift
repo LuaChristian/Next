@@ -655,6 +655,343 @@ struct FocusSessionResultTests {
     }
 }
 
+struct PomodoroConfigurationTests {
+    @Test func presetsMatchProductDefaults() {
+        #expect(PomodoroConfiguration.recommended == PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 4))
+        #expect(PomodoroConfiguration.gentleStart == PomodoroConfiguration(focusMinutes: 15, breakMinutes: 5, rounds: 2))
+        #expect(PomodoroConfiguration.deepWork == PomodoroConfiguration(focusMinutes: 50, breakMinutes: 10, rounds: 3))
+        #expect(PomodoroPreset.recommended.configuration == .recommended)
+    }
+
+    @Test func plannedFocusExcludesBreaksBetweenRounds() {
+        let config = PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 4)
+        #expect(config.plannedFocusSeconds == 25 * 60 * 4)
+        #expect(config.plannedBreakSeconds == 5 * 60 * 3)
+        #expect(PomodoroConfiguration(focusMinutes: 15, breakMinutes: 5, rounds: 1).plannedBreakSeconds == 0)
+    }
+
+    @Test func sanitizationClampsAndSnapsFocusSteps() {
+        #expect(PomodoroConfiguration(focusMinutes: 27, breakMinutes: 0, rounds: 99).sanitized()
+            == PomodoroConfiguration(focusMinutes: 25, breakMinutes: 1, rounds: 8))
+        #expect(PomodoroConfiguration(focusMinutes: 3, breakMinutes: 40, rounds: 0).sanitized()
+            == PomodoroConfiguration(focusMinutes: 5, breakMinutes: 30, rounds: 1))
+        #expect(PomodoroConfiguration.clampFocus(22) == 20)
+        #expect(PomodoroConfiguration.clampFocus(23) == 25)
+    }
+
+    @Test func preferenceDefaultsToRecommendedAndPersistsCustom() {
+        let defaults = UserDefaults(suiteName: "next.pomodoro-pref-\(UUID().uuidString)")!
+        #expect(PomodoroPreference.configuration(in: defaults) == .recommended)
+
+        let custom = PomodoroConfiguration(focusMinutes: 40, breakMinutes: 8, rounds: 3)
+        PomodoroPreference.setConfiguration(custom, in: defaults)
+        #expect(PomodoroPreference.configuration(in: defaults) == custom)
+
+        defaults.set(27, forKey: PomodoroPreference.focusMinutesKey)
+        defaults.set(0, forKey: PomodoroPreference.breakMinutesKey)
+        defaults.set(99, forKey: PomodoroPreference.roundsKey)
+        #expect(
+            PomodoroPreference.configuration(in: defaults)
+                == PomodoroConfiguration(focusMinutes: 25, breakMinutes: 1, rounds: 8)
+        )
+    }
+
+    @Test func preferenceNeverImpliesEnabledMode() {
+        let defaults = UserDefaults(suiteName: "next.pomodoro-enabled-\(UUID().uuidString)")!
+        PomodoroPreference.setConfiguration(.deepWork, in: defaults)
+        #expect(PomodoroPreference.configuration(in: defaults) == .deepWork)
+        #expect(defaults.object(forKey: "pomodoro.enabled") == nil)
+    }
+}
+
+struct PomodoroSessionTimerTests {
+    private let start = Date(timeIntervalSince1970: 1_700_000_000)
+    private let amino = TaskItem(
+        title: "Review amino acids",
+        durationMinutes: 25,
+        energyRequired: .good,
+        area: "Education",
+        goal: "Study for MCAT"
+    )
+
+    @Test func startsOnFocusRoundOneWithRecommendedPlan() {
+        let session = PomodoroSessionTimer(configuration: .recommended, startedAt: start)
+        #expect(session.phase == .running)
+        #expect(session.currentRound == 1)
+        #expect(!session.isOnBreak)
+        #expect(session.remainingDisplay(at: start) == "25:00")
+        #expect(session.configuration.plannedFocusSeconds == 100 * 60)
+    }
+
+    @Test func breakTimeDoesNotCountAsFocused() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(25 * 60))
+        #expect(session.isOnBreak)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(25 * 60)) == 1_500.0)
+
+        let midBreak = start.addingTimeInterval(28 * 60)
+        #expect(session.focusedElapsed(at: midBreak) == 1_500.0)
+        #expect(session.totalElapsedIncludingBreaks(at: midBreak) == 1_680.0)
+    }
+
+    @Test func multiRoundNaturalCompletionIsOneSessionResult() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 10, breakMinutes: 2, rounds: 2),
+            startedAt: start
+        )
+        // Fast-forward through focus → break → focus
+        session.evaluateCompletion(at: start.addingTimeInterval(10 * 60 + 2 * 60 + 10 * 60))
+        #expect(session.phase == .ended)
+        #expect(session.endedNaturally)
+
+        let result = session.makeResult(for: amino, at: start.addingTimeInterval(22 * 60))
+        #expect(result?.plannedDurationSeconds == 1_200.0)
+        #expect(result?.focusedDurationSeconds == 1_200.0)
+        #expect(result?.endedNaturally == true)
+    }
+
+    @Test func earlyFinishOnBreakKeepsOnlyCompletedFocus() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 3),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(25 * 60))
+        #expect(session.isOnBreak)
+        session.finish(at: start.addingTimeInterval(27 * 60))
+
+        let result = session.makeResult(for: amino, at: start.addingTimeInterval(27 * 60))
+        #expect(result?.focusedDurationSeconds == 1_500.0)
+        #expect(result?.endedNaturally == false)
+        #expect(result?.plannedDurationSeconds == 4_500.0)
+    }
+
+    @Test func pauseDuringFocusExcludesPausedTimeFromFocusAndElapsed() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 2),
+            startedAt: start
+        )
+        session.pause(at: start.addingTimeInterval(5 * 60))
+        session.resume(at: start.addingTimeInterval(9 * 60))
+        session.finish(at: start.addingTimeInterval(14 * 60))
+
+        let result = session.makeResult(for: amino, at: start.addingTimeInterval(14 * 60))
+        #expect(result?.focusedDurationSeconds == 600.0)
+    }
+
+    @MainActor
+    @Test func pomodoroCommitCreatesSingleFocusSession() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: goal)
+        context.insert(task)
+        try context.save()
+
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 10, breakMinutes: 2, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(22 * 60))
+        let result = session.makeResult(for: task.asTaskItem, at: start.addingTimeInterval(22 * 60))!
+
+        _ = try FocusSessionStore.commit(result: result, taskWasFinished: true, context: context)
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.focusedDurationSeconds == 1_200.0)
+        #expect(sessions.first?.plannedDurationSeconds == 1_200.0)
+    }
+
+    @Test func focusIntervalTransitionsToBreakWithoutCountingBreakAsFocus() {
+        // Shortest valid focus step is 5 minutes; clocks are injected.
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        #expect(session.isOnBreak)
+        #expect(session.currentRound == 1)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(5 * 60)) == 300.0)
+
+        let midBreak = start.addingTimeInterval(5 * 60 + 30)
+        #expect(session.isOnBreak)
+        #expect(session.focusedElapsed(at: midBreak) == 300.0)
+        #expect(session.totalElapsedIncludingBreaks(at: midBreak) == 330.0)
+    }
+
+    @Test func breakEndsStartsNextFocusWithAccurateRoundNumber() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(6 * 60))
+        #expect(!session.isOnBreak)
+        #expect(session.currentRound == 2)
+        #expect(session.phase == .running)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(6 * 60)) == 300.0)
+        #expect(session.remainingDisplay(at: start.addingTimeInterval(6 * 60)) == "05:00")
+    }
+
+    @Test func finalFocusRoundCompletesWithoutTrailingBreak() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        // focus (5) + break (1) + focus (5) = 11 minutes
+        session.evaluateCompletion(at: start.addingTimeInterval(11 * 60))
+        #expect(session.phase == .ended)
+        #expect(session.endedNaturally)
+        #expect(!session.isOnBreak)
+        let result = session.makeResult(for: amino, at: start.addingTimeInterval(11 * 60))
+        #expect(result?.focusedDurationSeconds == 600.0)
+        #expect(result?.plannedDurationSeconds == 600.0)
+    }
+
+    @Test func backgroundCatchUpResolvesCorrectSegmentAcrossBoundaries() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
+            startedAt: start
+        )
+        // Through focus1 + break + 30s into focus2
+        session.evaluateCompletion(at: start.addingTimeInterval(6 * 60 + 30))
+        #expect(!session.isOnBreak)
+        #expect(session.currentRound == 2)
+        #expect(session.phase == .running)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(6 * 60 + 30)) == 330.0)
+        #expect(session.remainingSeconds(at: start.addingTimeInterval(6 * 60 + 30)) == 270)
+    }
+
+    @Test func backgroundDuringBreakThenPastEndAdvancesToNextFocus() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        #expect(session.isOnBreak)
+        session.evaluateCompletion(at: start.addingTimeInterval(6 * 60 + 10))
+        #expect(!session.isOnBreak)
+        #expect(session.currentRound == 2)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(6 * 60 + 10)) == 310.0)
+    }
+
+    @Test func pauseDuringBreakDoesNotAddFocusAndResumeContinuesBreak() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 2, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        session.pause(at: start.addingTimeInterval(5 * 60 + 30))
+        #expect(session.phase == .paused)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(5 * 60 + 200)) == 300.0)
+
+        session.resume(at: start.addingTimeInterval(5 * 60 + 200))
+        #expect(session.isOnBreak)
+        #expect(session.remainingSeconds(at: start.addingTimeInterval(5 * 60 + 200)) == 90)
+    }
+}
+
+struct FocusSessionAccountingTests {
+    private let amino = TaskItem(
+        title: "Review amino acids",
+        durationMinutes: 25,
+        energyRequired: .good,
+        area: "Education",
+        goal: "Study for MCAT"
+    )
+
+    @Test func bankFocusPreservesPriorAndCurrentWithoutDuplication() {
+        let banked = FocusSessionAccounting.bankFocus(currentFocused: 300, previousBank: 120)
+        #expect(banked == 420.0)
+        let again = FocusSessionAccounting.bankFocus(currentFocused: 60, previousBank: banked)
+        #expect(again == 480.0)
+    }
+
+    @Test func breakTimeIsNeverBankedBecauseCallerPassesFocusOnly() {
+        // Callers pass focusedElapsed (excludes breaks). Banking zero mid-break keeps prior focus.
+        let banked = FocusSessionAccounting.bankFocus(currentFocused: 0, previousBank: 600)
+        #expect(banked == 600.0)
+    }
+
+    @Test func mergeBankedFocusAddsExactlyOnceToResult() {
+        let raw = FocusSessionResult(
+            task: amino,
+            plannedDurationSeconds: 1_500,
+            focusedDurationSeconds: 400,
+            endedNaturally: false
+        )
+        let merged = FocusSessionAccounting.mergeBankedFocus(200, into: raw)
+        #expect(merged.focusedDurationSeconds == 600.0)
+        #expect(merged.plannedDurationSeconds == 1_500.0)
+        #expect(merged.endedNaturally == false)
+    }
+
+    @Test func modeSwitchConfirmationRequiredOnlyWhenFocusExists() {
+        #expect(!FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 0, bankedFocus: 0))
+        #expect(FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 1, bankedFocus: 0))
+        #expect(FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 0, bankedFocus: 1))
+    }
+
+    @Test func simpleToPomodoroToSimplePreservesTotalFocusInMergedResult() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var simple = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let afterSimple = start.addingTimeInterval(180)
+        let bankAfterSimple = FocusSessionAccounting.bankFocus(
+            currentFocused: simple.activeElapsed(at: afterSimple),
+            previousBank: 0
+        )
+        #expect(bankAfterSimple == 180.0)
+
+        var pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: afterSimple
+        )
+        pomodoro.evaluateCompletion(at: afterSimple.addingTimeInterval(5 * 60))
+        #expect(pomodoro.isOnBreak)
+        let bankAfterPomodoro = FocusSessionAccounting.bankFocus(
+            currentFocused: pomodoro.focusedElapsed(at: afterSimple.addingTimeInterval(5 * 60 + 30)),
+            previousBank: bankAfterSimple
+        )
+        #expect(bankAfterPomodoro == 480.0)
+
+        var simpleAgain = FocusSessionTimer(
+            durationMinutes: 25,
+            startedAt: afterSimple.addingTimeInterval(5 * 60 + 30)
+        )
+        simpleAgain.finish(at: afterSimple.addingTimeInterval(5 * 60 + 90))
+        let raw = simpleAgain.makeResult(for: amino, at: afterSimple.addingTimeInterval(5 * 60 + 90))!
+        let merged = FocusSessionAccounting.mergeBankedFocus(bankAfterPomodoro, into: raw)
+        #expect(merged.focusedDurationSeconds == 540.0)
+    }
+
+    @MainActor
+    @Test func mergedPomodoroCommitRecordsSingleSessionWithBankedFocus() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: goal)
+        context.insert(task)
+        try context.save()
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        pomodoro.evaluateCompletion(at: start.addingTimeInterval(11 * 60))
+        let raw = try #require(pomodoro.makeResult(for: task.asTaskItem, at: start.addingTimeInterval(11 * 60)))
+        let merged = FocusSessionAccounting.mergeBankedFocus(90, into: raw)
+
+        _ = try FocusSessionStore.commit(result: merged, taskWasFinished: false, context: context)
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.focusedDurationSeconds == 690.0)
+        #expect(sessions.first?.taskWasFinished == false)
+        #expect(goal.totalFocusedDuration == 690.0)
+    }
+}
+
 struct PersistenceTests {
     private let engine = RecommendationEngine()
 
@@ -2243,6 +2580,7 @@ final class MockFocusNotificationScheduler: FocusNotificationScheduling {
     var grantOnRequest = true
     var authorizationDelayNanoseconds: UInt64 = 0
     private(set) var scheduled: [FocusCompletionNotification] = []
+    private(set) var scheduledSegments: [FocusSegmentNotification] = []
     private(set) var cancelCount = 0
     private(set) var requestCount = 0
 
@@ -2259,10 +2597,17 @@ final class MockFocusNotificationScheduler: FocusNotificationScheduling {
 
     func schedule(_ notification: FocusCompletionNotification) async {
         scheduled = [notification]
+        scheduledSegments = []
+    }
+
+    func scheduleSegment(_ notification: FocusSegmentNotification) async {
+        scheduledSegments = [notification]
+        scheduled = []
     }
 
     func cancelCompletionNotification() {
         scheduled = []
+        scheduledSegments = []
         cancelCount += 1
     }
 }
@@ -2382,7 +2727,95 @@ struct FocusExperienceTests {
 
     @Test func foregroundCompletionNotificationIsSuppressed() {
         #expect(FocusNotificationPresentation.options(for: FocusCompletionNotification.identifier).isEmpty)
+        #expect(FocusNotificationPresentation.options(for: FocusSegmentNotification.identifier).isEmpty)
         #expect(!FocusNotificationPresentation.options(for: "other.notification").isEmpty)
+    }
+
+    @MainActor
+    @Test func pomodoroSchedulesSegmentThenCompletionNotifications() async {
+        let (coordinator, scheduler) = coordinator()
+        var pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 25, breakMinutes: 5, rounds: 2),
+            startedAt: start
+        )
+
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.count == 1)
+        #expect(scheduler.scheduledSegments.first?.title == "Break time")
+
+        pomodoro.evaluateCompletion(at: start.addingTimeInterval(25 * 60))
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start.addingTimeInterval(25 * 60))
+        #expect(pomodoro.isOnBreak)
+        #expect(scheduler.scheduledSegments.first?.title == "Back to focus")
+
+        pomodoro.evaluateCompletion(at: start.addingTimeInterval(30 * 60))
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start.addingTimeInterval(30 * 60))
+        #expect(!pomodoro.isOnBreak)
+        #expect(pomodoro.willCompleteSessionAtNextNaturalEnd)
+        #expect(scheduler.scheduled.count == 1)
+        #expect(scheduler.scheduledSegments.isEmpty)
+        #expect(scheduler.scheduled.first?.title == "Focus complete")
+    }
+
+    @MainActor
+    @Test func modeSwitchCancelClearsSegmentAndCompletionNotifications() async {
+        let (coordinator, scheduler) = coordinator()
+        let pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start)
+        #expect(!scheduler.scheduledSegments.isEmpty)
+
+        coordinator.cancel()
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.isEmpty)
+        #expect(coordinator.scheduled == nil)
+        #expect(coordinator.scheduledSegment == nil)
+        #expect(scheduler.cancelCount >= 1)
+
+        let simple = FocusSessionTimer(durationMinutes: 25, startedAt: start.addingTimeInterval(30))
+        await coordinator.sync(timer: simple, taskTitle: amino.title, at: start.addingTimeInterval(30))
+        #expect(scheduler.scheduled.count == 1)
+        #expect(scheduler.scheduledSegments.isEmpty)
+    }
+
+    @MainActor
+    @Test func finishEarlyClearsPendingPomodoroNotifications() async {
+        let (coordinator, scheduler) = coordinator()
+        var pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
+            startedAt: start
+        )
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start)
+        #expect(scheduler.scheduledSegments.count == 1)
+
+        pomodoro.finish(at: start.addingTimeInterval(20))
+        coordinator.cancel()
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start.addingTimeInterval(20))
+        #expect(pomodoro.phase == .ended)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.isEmpty)
+        #expect(coordinator.scheduled == nil)
+        #expect(coordinator.scheduledSegment == nil)
+    }
+
+    @MainActor
+    @Test func naturalCompletionClearsNotificationsWithoutReschedule() async {
+        let (coordinator, scheduler) = coordinator()
+        var pomodoro = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 1),
+            startedAt: start
+        )
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start)
+        #expect(scheduler.scheduled.count == 1)
+
+        pomodoro.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        await coordinator.sync(pomodoro: pomodoro, taskTitle: amino.title, at: start.addingTimeInterval(5 * 60))
+        #expect(pomodoro.phase == .ended)
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.isEmpty)
     }
 
     @Test func keepScreenAwakeDefaultsOffAndPersists() {
@@ -3179,8 +3612,11 @@ struct SmartRemindersTests {
     @Test func reminderAndFocusCompletionIdentifiersStayDistinct() {
         #expect(DailyReminder.identifier == "next.reminder.daily")
         #expect(FocusCompletionNotification.identifier == "next.focus.completion")
+        #expect(FocusSegmentNotification.identifier == "next.focus.segment")
         #expect(DailyReminder.identifier != FocusCompletionNotification.identifier)
+        #expect(FocusCompletionNotification.identifier != FocusSegmentNotification.identifier)
         #expect(FocusNotificationPresentation.options(for: FocusCompletionNotification.identifier).isEmpty)
+        #expect(FocusNotificationPresentation.options(for: FocusSegmentNotification.identifier).isEmpty)
         #expect(!FocusNotificationPresentation.options(for: DailyReminder.identifier).isEmpty)
     }
 

@@ -21,6 +21,15 @@ struct FocusCompletionNotification: Equatable {
     }
 
     var request: UNNotificationRequest {
+        Self.makeRequest(identifier: Self.identifier, title: title, body: body, fireDate: fireDate)
+    }
+
+    static func makeRequest(
+        identifier: String,
+        title: String,
+        body: String,
+        fireDate: Date
+    ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -31,13 +40,58 @@ struct FocusCompletionNotification: Equatable {
             from: fireDate
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        return UNNotificationRequest(identifier: Self.identifier, content: content, trigger: trigger)
+        return UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+    }
+}
+
+struct FocusSegmentNotification: Equatable {
+    static let identifier = "next.focus.segment"
+
+    enum Kind: Equatable {
+        case focusRoundComplete(round: Int, total: Int)
+        case breakComplete(nextRound: Int, total: Int)
+    }
+
+    let kind: Kind
+    let taskTitle: String
+    let fireDate: Date
+
+    var title: String {
+        switch kind {
+        case .focusRoundComplete:
+            return "Break time"
+        case .breakComplete:
+            return "Back to focus"
+        }
+    }
+
+    var body: String {
+        switch kind {
+        case .focusRoundComplete(let round, let total):
+            return "Round \(round) of \(total) complete for \(taskTitle). Take a short break."
+        case .breakComplete(let nextRound, let total):
+            return "Break over. Starting round \(nextRound) of \(total) for \(taskTitle)."
+        }
+    }
+
+    var request: UNNotificationRequest {
+        FocusCompletionNotification.makeRequest(
+            identifier: Self.identifier,
+            title: title,
+            body: body,
+            fireDate: fireDate
+        )
     }
 }
 
 enum FocusNotificationPresentation {
     static func options(for identifier: String) -> UNNotificationPresentationOptions {
-        identifier == FocusCompletionNotification.identifier ? [] : [.banner, .list, .sound]
+        switch identifier {
+        case FocusCompletionNotification.identifier, FocusSegmentNotification.identifier:
+            return []
+        default:
+            return [.banner, .list, .sound]
+        }
     }
 }
 
@@ -45,6 +99,7 @@ protocol FocusNotificationScheduling: AnyObject {
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization() async -> Bool
     func schedule(_ notification: FocusCompletionNotification) async
+    func scheduleSegment(_ notification: FocusSegmentNotification) async
     func cancelCompletionNotification()
 }
 
@@ -56,6 +111,7 @@ final class FocusNotificationCoordinator {
     private let skipsSystemPrompt: Bool
 
     private(set) var scheduled: FocusCompletionNotification?
+    private(set) var scheduledSegment: FocusSegmentNotification?
     private(set) var authorizationRequests = 0
 
     /// Serializes overlapping syncs so a late schedule cannot resurrect a cancel.
@@ -80,46 +136,106 @@ final class FocusNotificationCoordinator {
         await work.value
     }
 
+    func sync(pomodoro: PomodoroSessionTimer, taskTitle: String, at now: Date) async {
+        let previous = syncChain
+        let work = Task { @MainActor in
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            await self.performSync(pomodoro: pomodoro, taskTitle: taskTitle, at: now)
+        }
+        syncChain = work
+        await work.value
+    }
+
     func cancel() {
         syncChain?.cancel()
         syncChain = nil
         scheduler.cancelCompletionNotification()
         scheduled = nil
+        scheduledSegment = nil
     }
 
     private func performSync(timer: FocusSessionTimer, taskTitle: String, at now: Date) async {
+        scheduledSegment = nil
         if let fireDate = timer.expectedNaturalCompletion(at: now) {
-            await scheduleIfAllowed(taskTitle: taskTitle, fireDate: fireDate)
+            await scheduleCompletionIfAllowed(taskTitle: taskTitle, fireDate: fireDate)
         } else {
-            scheduler.cancelCompletionNotification()
-            scheduled = nil
+            clearPending()
         }
     }
 
-    private func scheduleIfAllowed(taskTitle: String, fireDate: Date) async {
+    private func performSync(pomodoro: PomodoroSessionTimer, taskTitle: String, at now: Date) async {
+        guard let fireDate = pomodoro.expectedNaturalCompletion(at: now) else {
+            clearPending()
+            return
+        }
+
+        if pomodoro.willCompleteSessionAtNextNaturalEnd {
+            scheduledSegment = nil
+            await scheduleCompletionIfAllowed(taskTitle: taskTitle, fireDate: fireDate)
+            return
+        }
+
+        scheduled = nil
+        let kind: FocusSegmentNotification.Kind
+        switch pomodoro.kind {
+        case .focus(let round):
+            kind = .focusRoundComplete(round: round, total: pomodoro.totalRounds)
+        case .breakTime(let afterRound):
+            kind = .breakComplete(nextRound: afterRound + 1, total: pomodoro.totalRounds)
+        }
+        await scheduleSegmentIfAllowed(
+            FocusSegmentNotification(kind: kind, taskTitle: taskTitle, fireDate: fireDate)
+        )
+    }
+
+    private func clearPending() {
+        scheduler.cancelCompletionNotification()
+        scheduled = nil
+        scheduledSegment = nil
+    }
+
+    private func scheduleCompletionIfAllowed(taskTitle: String, fireDate: Date) async {
+        guard await ensureAuthorized() else {
+            clearPending()
+            return
+        }
+        guard !Task.isCancelled else { return }
+
+        let notification = FocusCompletionNotification(taskTitle: taskTitle, fireDate: fireDate)
+        await scheduler.schedule(notification)
+        guard !Task.isCancelled else {
+            clearPending()
+            return
+        }
+        scheduled = notification
+        scheduledSegment = nil
+    }
+
+    private func scheduleSegmentIfAllowed(_ notification: FocusSegmentNotification) async {
+        guard await ensureAuthorized() else {
+            clearPending()
+            return
+        }
+        guard !Task.isCancelled else { return }
+
+        await scheduler.scheduleSegment(notification)
+        guard !Task.isCancelled else {
+            clearPending()
+            return
+        }
+        scheduledSegment = notification
+        scheduled = nil
+    }
+
+    private func ensureAuthorized() async -> Bool {
         var status = await scheduler.authorizationStatus()
         if status == .notDetermined, !skipsSystemPrompt {
             authorizationRequests += 1
             _ = await scheduler.requestAuthorization()
             status = await scheduler.authorizationStatus()
         }
-
-        guard !Task.isCancelled else { return }
-
-        guard status == .authorized || status == .provisional else {
-            scheduler.cancelCompletionNotification()
-            scheduled = nil
-            return
-        }
-
-        let notification = FocusCompletionNotification(taskTitle: taskTitle, fireDate: fireDate)
-        await scheduler.schedule(notification)
-        guard !Task.isCancelled else {
-            scheduler.cancelCompletionNotification()
-            scheduled = nil
-            return
-        }
-        scheduled = notification
+        return status == .authorized || status == .provisional
     }
 }
 
@@ -134,14 +250,30 @@ final class SystemFocusNotificationScheduler: FocusNotificationScheduling {
 
     func schedule(_ notification: FocusCompletionNotification) async {
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [FocusCompletionNotification.identifier])
+        center.removePendingNotificationRequests(withIdentifiers: [
+            FocusCompletionNotification.identifier,
+            FocusSegmentNotification.identifier
+        ])
+        try? await center.add(notification.request)
+    }
+
+    func scheduleSegment(_ notification: FocusSegmentNotification) async {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [
+            FocusCompletionNotification.identifier,
+            FocusSegmentNotification.identifier
+        ])
         try? await center.add(notification.request)
     }
 
     func cancelCompletionNotification() {
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [FocusCompletionNotification.identifier])
-        center.removeDeliveredNotifications(withIdentifiers: [FocusCompletionNotification.identifier])
+        let ids = [
+            FocusCompletionNotification.identifier,
+            FocusSegmentNotification.identifier
+        ]
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+        center.removeDeliveredNotifications(withIdentifiers: ids)
     }
 }
 

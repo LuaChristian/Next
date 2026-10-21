@@ -19,7 +19,7 @@ struct FocusSessionTimer: Equatable {
     private var startedAt: Date
     private var totalPaused: TimeInterval = 0
     private var pausedAt: Date?
-    private var endedAt: Date?
+    private(set) var endedAt: Date?
     private(set) var endedNaturally = false
 
     private(set) var phase: FocusSessionPhase = .running
@@ -27,6 +27,11 @@ struct FocusSessionTimer: Equatable {
     init(durationMinutes: Int, startedAt: Date = Date()) {
         duration = TimeInterval(durationMinutes * 60)
         self.startedAt = startedAt
+    }
+
+    /// Wall-clock moment active elapsed reaches `duration` while running (pause time already folded in).
+    func naturalDeadline() -> Date {
+        startedAt.addingTimeInterval(duration + totalPaused)
     }
 
     func remaining(at now: Date) -> TimeInterval {
@@ -104,11 +109,16 @@ struct FocusSessionTimer: Equatable {
 
     private mutating func end(at now: Date, naturally: Bool) {
         guard phase != .ended else { return }
+        let wasRunning = phase == .running
         if phase == .paused, let pausedAt {
             totalPaused += now.timeIntervalSince(pausedAt)
             self.pausedAt = nil
         }
-        endedAt = now
+        if naturally, wasRunning {
+            endedAt = min(now, naturalDeadline())
+        } else {
+            endedAt = now
+        }
         endedNaturally = naturally
         phase = .ended
     }
