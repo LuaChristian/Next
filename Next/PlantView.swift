@@ -21,9 +21,11 @@ struct PlantView: View {
             case .asset(let name):
                 Image(name)
                     .resizable()
-                    .interpolation(.high)
+                    .interpolation(.none)
                     .aspectRatio(contentMode: .fit)
                     // Full-color / line artwork is drawn as authored — never template-tinted.
+            case .pixel(let species):
+                PixelPlantView(species: species, stage: stage)
             case .canvas:
                 Canvas { context, size in
                     PlantDrawing.draw(
