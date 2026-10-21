@@ -2215,6 +2215,121 @@ struct GardenMetricsTests {
     }
 }
 
+struct LivingGardenSummaryTests {
+    @Test func editorialDurationFormatting() {
+        #expect(GardenCollectionSummary.editorialDuration(seconds: 0) == "0m")
+        #expect(GardenCollectionSummary.editorialDuration(seconds: 20) == "<1m")
+        #expect(GardenCollectionSummary.editorialDuration(seconds: 18 * 60) == "18m")
+        #expect(GardenCollectionSummary.editorialDuration(seconds: 85 * 60) == "1h 25m")
+        #expect(GardenCollectionSummary.editorialDuration(seconds: 120 * 60) == "2h")
+        #expect(GardenCollectionSummary.focusedTimeLabel(seconds: 750 * 60) == "12h 30m of focused time")
+    }
+
+    @Test func goalsGrowingGrammar() {
+        #expect(GardenCollectionSummary.goalsGrowingLabel(count: 0) == "0 goals growing")
+        #expect(GardenCollectionSummary.goalsGrowingLabel(count: 1) == "1 goal growing")
+        #expect(GardenCollectionSummary.goalsGrowingLabel(count: 4) == "4 goals growing")
+    }
+
+    @Test func columnCountAdaptsToWidthAndDynamicType() {
+        #expect(GardenCollectionLayout.columnCount(contentWidth: 337, isAccessibilitySize: false) == 2)
+        #expect(GardenCollectionLayout.columnCount(contentWidth: 264, isAccessibilitySize: false) == 1)
+        #expect(GardenCollectionLayout.columnCount(contentWidth: 400, isAccessibilitySize: true) == 1)
+    }
+
+    @MainActor
+    @Test func summaryDoesNotDoubleCountSessionsAcrossGoals() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let study = Goal(title: "Study", area: .education, priority: .high, botanicalSpecies: .fern)
+        let build = Goal(
+            title: "Build",
+            areas: [.creative, .career],
+            priority: .normal,
+            botanicalSpecies: .lavender
+        )
+        context.insert(study)
+        context.insert(build)
+
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 30 * 60,
+                focusedDurationSeconds: 30 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: study
+            )
+        )
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 45 * 60,
+                focusedDurationSeconds: 45 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: build
+            )
+        )
+        try context.save()
+
+        let goals = try context.fetch(FetchDescriptor<Goal>(sortBy: [SortDescriptor(\.createdAt)]))
+        #expect(goals.count == 2)
+        #expect(GardenCollectionSummary.totalFocusedSeconds(across: goals) == 75 * 60)
+
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(sessions.count == 2)
+        #expect(sessions.reduce(0) { $0 + $1.focusedDurationSeconds } == 75 * 60)
+    }
+
+    @MainActor
+    @Test func multiAreaGoalAppearsOnceInCollectionMetrics() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(
+            title: "Portfolio",
+            areas: [.creative, .career],
+            priority: .normal,
+            botanicalSpecies: .flowering
+        )
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 120 * 60,
+                focusedDurationSeconds: 120 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 1)
+        #expect(GardenCollectionSummary.goalsGrowingLabel(count: goals.count) == "1 goal growing")
+        #expect(GardenCollectionSummary.totalFocusedSeconds(across: goals) == 120 * 60)
+        #expect(goal.growthStage == .young)
+    }
+
+    @MainActor
+    @Test func gardenAndDetailShareGrowthFromSameSessions() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high, botanicalSpecies: .rosemary)
+        context.insert(goal)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 300 * 60,
+                focusedDurationSeconds: 300 * 60,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal
+            )
+        )
+        try context.save()
+
+        #expect(goal.growthStage == GardenGrowth.stage(for: goal.totalFocusedDuration))
+        #expect(goal.growthStage == .growing)
+        #expect(goal.growthStage.spokenName == "Flourishing")
+        #expect(GardenCollectionSummary.totalFocusedSeconds(across: [goal]) == goal.totalFocusedDuration)
+    }
+}
+
 struct FocusSessionPersistenceTests {
     @MainActor
     private func makeContext() throws -> ModelContext {

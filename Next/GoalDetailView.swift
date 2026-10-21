@@ -156,11 +156,17 @@ struct GoalDetailView: View {
                 .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 8)
 
-            Text(GardenMetrics.sessionCountLabel(goal.sessionCount))
+            Text(goal.growthStage.spokenName.uppercased())
                 .nextFont(13, weight: .medium, relativeTo: .caption)
                 .tracking(1.4)
                 .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 18)
+
+            Text(GardenMetrics.sessionCountLabel(goal.sessionCount))
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.4)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 6)
 
             Text(GardenMetrics.focusedDurationLabel(seconds: goal.totalFocusedDuration))
                 .nextFont(13, weight: .medium, relativeTo: .caption)

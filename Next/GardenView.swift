@@ -2,7 +2,8 @@
 //  GardenView.swift
 //  Next
 //
-//  Created by Christian Lua-Lua on 9/25/26.
+//  Living Garden — botanical collection presentation.
+//  Growth math stays in GardenGrowth / Goal; this surface only presents.
 //
 
 import SwiftData
@@ -13,48 +14,48 @@ struct GardenView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isPlanting = false
 
-    private var compactPlant: Bool {
+    private var isAccessibilitySize: Bool {
         dynamicTypeSize.isAccessibilitySize
     }
 
     var body: some View {
-        Group {
-            if compactPlant {
-                ScrollView {
+        GeometryReader { proxy in
+            let contentWidth = max(proxy.size.width - (NextTheme.pagePadding * 2), 1)
+
+            Group {
+                if isAccessibilitySize {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            gardenHeader
+                            gardenBody(contentWidth: contentWidth)
+                            plantGoalAction
+                                .padding(.top, 28)
+                        }
+                        .padding(.horizontal, NextTheme.pagePadding)
+                        .padding(.top, 12)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                } else {
                     VStack(alignment: .leading, spacing: 0) {
                         gardenHeader
-                        gardenContent
-                        NextPrimaryAction(title: "+ PLANT A GOAL") {
-                            isPlanting = true
+                        ScrollView {
+                            gardenBody(contentWidth: contentWidth)
                         }
-                        .padding(.top, 28)
+                        .scrollDismissesKeyboard(.interactively)
+
+                        plantGoalAction
+                            .padding(.top, 8)
                     }
                     .padding(.horizontal, NextTheme.pagePadding)
                     .padding(.top, 12)
                     .padding(.bottom, 28)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .background(NextTheme.canvas.ignoresSafeArea())
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    gardenHeader
-                    ScrollView {
-                        gardenContent
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-
-                    NextPrimaryAction(title: "+ PLANT A GOAL") {
-                        isPlanting = true
-                    }
-                    .padding(.top, 8)
-                }
-                .padding(.horizontal, NextTheme.pagePadding)
-                .padding(.top, 12)
-                .padding(.bottom, 28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(NextTheme.canvas.ignoresSafeArea())
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(NextTheme.canvas.ignoresSafeArea())
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: UUID.self) { goalID in
@@ -73,42 +74,97 @@ struct GardenView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    private var plantGoalAction: some View {
+        NextPrimaryAction(title: "+ PLANT A GOAL") {
+            isPlanting = true
+        }
+    }
+
     @ViewBuilder
-    private var gardenContent: some View {
+    private func gardenBody(contentWidth: CGFloat) -> some View {
         if goals.isEmpty {
             emptyState
         } else {
-            goalRows
+            gardenSummary
+            collection(contentWidth: contentWidth)
         }
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Nothing planted yet.")
+            Text("Every garden starts somewhere.")
                 .nextFont(28, relativeTo: .title)
                 .foregroundStyle(NextTheme.ink)
                 .padding(.top, 48)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Start with something you want to make progress on.")
+            Text("Plant a goal to begin growing something meaningful.")
                 .nextFont(17)
                 .foregroundStyle(NextTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("gardenEmptyState")
     }
 
-    private var goalRows: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Your goals")
-                .nextFont(17)
-                .foregroundStyle(NextTheme.ink)
+    private var gardenSummary: some View {
+        let focused = GardenCollectionSummary.totalFocusedSeconds(across: goals)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("YOUR GARDEN")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(2.4)
+                .foregroundStyle(NextTheme.secondary)
                 .padding(.top, 36)
-                .padding(.bottom, 12)
+                .accessibilityAddTraits(.isHeader)
 
+            Text(GardenCollectionSummary.goalsGrowingLabel(count: goals.count))
+                .nextFont(22, relativeTo: .title3)
+                .foregroundStyle(NextTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(GardenCollectionSummary.focusedTimeLabel(seconds: focused))
+                .nextFont(17)
+                .foregroundStyle(NextTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("gardenSummary")
+        .accessibilityLabel(
+            "Your garden. \(GardenCollectionSummary.goalsGrowingLabel(count: goals.count)). \(GardenCollectionSummary.focusedTimeLabel(seconds: focused))."
+        )
+    }
+
+    private func collection(contentWidth: CGFloat) -> some View {
+        // One goal stays full-width so the plant isn't stranded in an empty grid.
+        let preferred = GardenCollectionLayout.columnCount(
+            contentWidth: contentWidth,
+            isAccessibilitySize: isAccessibilitySize
+        )
+        let columns = goals.count < 2 ? 1 : preferred
+        let plantSize = GardenCollectionLayout.plantSize(
+            columns: columns,
+            isAccessibilitySize: isAccessibilitySize
+        )
+
+        return Group {
+            if columns == 1 {
+                singleColumnCollection(plantSize: plantSize)
+            } else {
+                gridCollection(plantSize: plantSize)
+            }
+        }
+        .padding(.top, 28)
+        .padding(.bottom, 12)
+        .accessibilityIdentifier("gardenCollection")
+    }
+
+    private func singleColumnCollection(plantSize: CGSize) -> some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(goals) { goal in
                 NavigationLink(value: goal.id) {
-                    goalRow(goal)
+                    GardenPlantCell(goal: goal, plantSize: plantSize, columns: 1)
+                        .padding(.vertical, 24)
                 }
                 .buttonStyle(.plain)
 
@@ -117,45 +173,22 @@ struct GardenView: View {
                 }
             }
         }
-        .padding(.bottom, 12)
     }
 
-    private func goalRow(_ goal: Goal) -> some View {
-        HStack(alignment: .center, spacing: compactPlant ? 12 : 20) {
-            PlantView(species: goal.botanicalSpecies, stage: goal.growthStage)
-                .frame(
-                    width: compactPlant ? 48 : 72,
-                    height: compactPlant ? 68 : 104
-                )
+    private func gridCollection(plantSize: CGSize) -> some View {
+        let gridItems = [
+            GridItem(.flexible(minimum: 120), spacing: 28, alignment: .top),
+            GridItem(.flexible(minimum: 120), spacing: 28, alignment: .top)
+        ]
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(goal.title)
-                    .nextFont(22, relativeTo: .title3)
-                    .foregroundStyle(NextTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !goal.areasDisplayLabel.isEmpty {
-                    Text(goal.areasDisplayLabel)
-                        .nextFont(13, weight: .medium, relativeTo: .caption)
-                        .tracking(1.2)
-                        .foregroundStyle(NextTheme.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        return LazyVGrid(columns: gridItems, alignment: .center, spacing: 36) {
+            ForEach(goals) { goal in
+                NavigationLink(value: goal.id) {
+                    GardenPlantCell(goal: goal, plantSize: plantSize, columns: 2)
                 }
-
-                Text(goal.progressMetricsLabel)
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(1.2)
-                    .foregroundStyle(NextTheme.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, compactPlant ? 18 : 28)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(goal.progressAccessibilityLabel)
-        .accessibilityValue(goal.growthStage.spokenName)
-        .accessibilityIdentifier("gardenGoal-\(goal.title)")
     }
 }
 

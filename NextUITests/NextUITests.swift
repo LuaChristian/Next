@@ -144,7 +144,7 @@ final class NextUITests: XCTestCase {
         app.launch()
 
         app.tabBars.buttons["Garden"].tap()
-        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
 
         app.buttons["+ PLANT A GOAL"].tap()
         let goalField = app.textFields["Goal title"]
@@ -252,7 +252,7 @@ final class NextUITests: XCTestCase {
 
     private func plantMCATGoalAndAminoTask(in app: XCUIApplication) {
         app.tabBars.buttons["Garden"].tap()
-        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
 
         app.buttons["+ PLANT A GOAL"].tap()
         let goalField = app.textFields["Goal title"]
@@ -355,7 +355,7 @@ final class NextUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         app.tabBars.buttons["Garden"].tap()
-        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
     }
 
     @MainActor
@@ -412,7 +412,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
         app.tabBars.buttons["Garden"].tap()
-        XCTAssertTrue(app.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
     }
 
     @MainActor
@@ -1298,6 +1298,143 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testLivingGardenVisualReview() throws {
+        let review = LivingGardenCapture(self)
+
+        // 01 — Empty Garden
+        var app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_IN_MEMORY",
+            "UITEST_ONBOARDING_COMPLETED",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["+ PLANT A GOAL"].exists)
+        review.capture(app, "01 Empty Garden")
+        app.terminate()
+
+        // 02 — Garden with one goal
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_IN_MEMORY",
+            "UITEST_ONBOARDING_COMPLETED",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 3))
+        app.buttons["+ PLANT A GOAL"].tap()
+        let titleField = app.textFields["Goal title"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 3))
+        titleField.tap()
+        titleField.typeText("Morning pages")
+        dismissKeyboard(in: app)
+        XCTAssertTrue(app.buttons["PLANT GOAL →"].waitForExistence(timeout: 2))
+        app.buttons["PLANT GOAL →"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["1 goal growing"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["gardenGoal-Morning pages"].waitForExistence(timeout: 3))
+        review.capture(app, "02 Garden with one goal")
+        app.terminate()
+
+        // 03 + 04 + 05 + 06 — Multiple goals, species, stages, summary
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["5 goals growing"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["gardenSummary"].exists)
+        review.capture(app, "03 Garden with multiple goals")
+        review.capture(app, "04 Garden showing different species")
+        review.capture(app, "05 Garden showing different growth stages")
+        review.capture(app, "06 Garden summary")
+
+        // 07 — Goal Detail from Garden
+        let mature = app.descendants(matching: .any)["gardenGoal-Mature plant"]
+        reveal(mature, in: app)
+        XCTAssertTrue(mature.waitForExistence(timeout: 3))
+        mature.tap()
+        XCTAssertTrue(app.staticTexts["Mature plant"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["MATURE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["10H FOCUSED"].waitForExistence(timeout: 2))
+        review.capture(app, "07 Goal Detail from Garden")
+        app.terminate()
+
+        // 08 — Dark-mode Garden
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
+        review.capture(app, "08 Dark-mode Garden")
+        app.terminate()
+
+        // 10 — Large Dynamic Type Garden
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        if #available(iOS 17.0, *) {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        }
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["gardenGoal-Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "10 Large Dynamic Type Garden")
+    }
+
+    @MainActor
+    func testLivingGardenSmallScreenReview() throws {
+        let review = LivingGardenCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
+        review.capture(app, "09 Small-screen Garden")
+    }
+
+    @MainActor
+    func testLivingGardenOpensCorrectGoalAndPreservesPlantFlow() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_GROWTH", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["5 goals growing"].waitForExistence(timeout: 3))
+
+        openGardenGoal("Young plant", in: app)
+        XCTAssertTrue(app.staticTexts["Young plant"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["DEVELOPING"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["2H FOCUSED"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 2))
+        app.buttons["+ PLANT A GOAL"].tap()
+        XCTAssertTrue(app.textFields["Goal title"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["botanicalSpeciesPicker"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testSessionRecoveryVisualReview() throws {
         let review = SessionRecoveryCapture(self)
         let suite = "next.uitest.recovery-review-\(UUID().uuidString)"
@@ -1703,7 +1840,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(empty.staticTexts["NO FOCUS SESSIONS YET."].waitForExistence(timeout: 2))
         review.capture(empty, "24 Empty History")
         empty.tabBars.buttons["Garden"].tap()
-        XCTAssertTrue(empty.staticTexts["Nothing planted yet."].waitForExistence(timeout: 2))
+        XCTAssertTrue(empty.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
         review.capture(empty, "25 Empty Garden")
         empty.terminate()
 
@@ -3507,6 +3644,17 @@ private struct PixelArtGrowthCapture {
 private struct BotanicalCollectionsCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M8-Botanical-Collections"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct LivingGardenCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M9-Living-Garden"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
