@@ -41,7 +41,9 @@ struct NextApp: App {
         WindowGroup {
             Group {
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains(NextPersistence.plantComparisonArgument) {
+                if ProcessInfo.processInfo.arguments.contains(FernStageShowcaseView.argument) {
+                    FernStageShowcaseView()
+                } else if ProcessInfo.processInfo.arguments.contains(NextPersistence.plantComparisonArgument) {
                     PlantComparisonView()
                 } else if hasCompletedOnboarding {
                     ContentView()

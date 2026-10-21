@@ -1109,6 +1109,88 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testPixelArtGrowthVisualReview() throws {
+        let review = PixelArtGrowthCapture(self)
+
+        // 01–05: one focused fern stage per launch (DEBUG fixture).
+        for stage in 0...4 {
+            let showcase = XCUIApplication()
+            showcase.launchArguments = [
+                "UITEST_FERN_STAGES", "\(stage)",
+                "UITEST_APPEARANCE", "light",
+                "UITEST_WRITE_REVIEW_SHOTS"
+            ]
+            showcase.launch()
+            XCTAssertTrue(showcase.descendants(matching: .any)["fernStage-\(stage)"].waitForExistence(timeout: 5))
+            review.capture(showcase, "0\(stage + 1) Fern Stage \(stage)")
+            showcase.terminate()
+        }
+
+        // 06 — Garden with multiple goals (pixel fern at mixed stages).
+        var app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "06 Garden with multiple goals")
+
+        // 08 — Goal detail with pixel-art fern.
+        app.descendants(matching: .any)["gardenGoal-Mature plant"].tap()
+        XCTAssertTrue(app.staticTexts["Mature plant"].waitForExistence(timeout: 3))
+        review.capture(app, "08 Goal detail with pixel-art fern")
+        app.terminate()
+
+        // 07 — Garden in Dark mode.
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "07 Garden in Dark mode")
+        app.terminate()
+
+        // 09 is captured on iPhone 16e via testPixelArtGrowthSmallScreenReview.
+
+        // 10 — Large Dynamic Type Garden.
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        if #available(iOS 17.0, *) {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        }
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "10 Large Dynamic Type Garden")
+    }
+
+    @MainActor
+    func testPixelArtGrowthSmallScreenReview() throws {
+        let review = PixelArtGrowthCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GROWTH",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Garden"].tap()
+        XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
+        review.capture(app, "09 Small-screen Garden")
+    }
+
+    @MainActor
     func testSessionRecoveryVisualReview() throws {
         let review = SessionRecoveryCapture(self)
         let suite = "next.uitest.recovery-review-\(UUID().uuidString)"
@@ -3296,6 +3378,17 @@ private struct FocusRefinementCapture {
 private struct SessionRecoveryCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M6-Session-Recovery"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct PixelArtGrowthCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M7-Pixel-Art-Growth"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
