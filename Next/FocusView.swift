@@ -29,6 +29,7 @@ struct FocusView: View {
     let onDone: () -> Void
     let notifications: FocusNotificationCoordinator
 
+    @State private var experienceID: UUID
     @State private var mode: FocusRunMode
     @State private var now = Date()
     @State private var result: FocusSessionResult?
@@ -41,28 +42,71 @@ struct FocusView: View {
     @State private var didPlayCompletionHaptic = false
     @State private var isEndingSession = false
     @State private var isSwitchingMode = false
+    @State private var didClearRecovery = false
 
     init(
         task: TaskItem,
+        bootstrap: FocusRecoveryBootstrap? = nil,
         notifications: FocusNotificationCoordinator = .shared,
         onDone: @escaping () -> Void = {}
     ) {
-        self.task = task
+        self.task = bootstrap?.task ?? task
         self.notifications = notifications
         self.onDone = onDone
-        _mode = State(initialValue: .simple(FocusSessionTimer(durationMinutes: task.durationMinutes)))
+
+        if let bootstrap {
+            _experienceID = State(initialValue: bootstrap.experienceID)
+            _bankedFocusSeconds = State(initialValue: bootstrap.bankedFocusSeconds)
+            _result = State(initialValue: bootstrap.result)
+            switch bootstrap.mode {
+            case .simple(let timer):
+                _mode = State(initialValue: .simple(timer))
+            case .pomodoro(let timer):
+                _mode = State(initialValue: .pomodoro(timer))
+            }
+            if bootstrap.result != nil {
+                _isEndingSession = State(initialValue: true)
+            }
+        } else {
+            // Write durable recovery state immediately at session construction —
+            // do not wait for onAppear / scenePhase / the 1s display clock.
+            let id = UUID()
+            let timer = FocusSessionTimer(durationMinutes: task.durationMinutes)
+            let resolvedTask = task
+            _experienceID = State(initialValue: id)
+            _mode = State(initialValue: .simple(timer))
+            FocusRecoveryPersistence.writeImmediate(
+                experienceID: id,
+                task: resolvedTask,
+                bankedFocusSeconds: 0,
+                simple: timer.snapshot,
+                pomodoro: nil,
+                at: Date()
+            )
+        }
     }
 
     var body: some View {
         Group {
             if let result {
-                CompletionView(result: result, onFinished: finishAndRestore)
+                CompletionView(
+                    result: result,
+                    experienceID: experienceID,
+                    onFinished: finishAndRestore
+                )
             } else {
                 focusContent
             }
         }
-        .onAppear { FocusSessionPresence.isActive = true }
+        .onAppear {
+            FocusSessionPresence.isActive = true
+            persistRecoverySnapshot(at: Date())
+            syncNotifications(at: Date())
+        }
         .onDisappear {
+            if !didClearRecovery {
+                persistRecoverySnapshot(at: Date())
+            }
             FocusSessionPresence.isActive = false
             restoreIdleTimer()
         }
@@ -90,11 +134,14 @@ struct FocusView: View {
         .nextScrollableCanvas(top: 16)
         .task { await runDisplayClock() }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else {
+            let current = Date()
+            if phase != .active {
+                persistRecoverySnapshot(at: current)
                 applyIdleTimer()
                 return
             }
-            refresh(at: Date(), allowHaptic: false)
+            refresh(at: current, allowHaptic: false)
+            persistRecoverySnapshot(at: current)
         }
         .onChange(of: keepScreenAwake) { _, isOn in
             FocusPreference.setKeepScreenAwake(isOn)
@@ -436,6 +483,7 @@ struct FocusView: View {
         isSwitchingMode = false
         applyIdleTimer()
         syncNotifications(at: current)
+        persistRecoverySnapshot(at: current)
     }
 
     private func applyBeginSimpleFocus(at current: Date = Date()) {
@@ -457,6 +505,7 @@ struct FocusView: View {
         isSwitchingMode = false
         applyIdleTimer()
         syncNotifications(at: current)
+        persistRecoverySnapshot(at: current)
     }
 
     private func applyPomodoroPreviewIfNeeded(_ session: inout PomodoroSessionTimer, at current: Date) {
@@ -497,6 +546,7 @@ struct FocusView: View {
         applyIdleTimer()
         syncNotifications(at: current)
         captureResultIfEnded(at: current, allowHaptic: scenePhase == .active)
+        persistRecoverySnapshot(at: current)
     }
 
     private func finishEarly() {
@@ -515,6 +565,7 @@ struct FocusView: View {
         applyIdleTimer()
         notifications.cancel()
         captureResultIfEnded(at: current, allowHaptic: false)
+        persistRecoverySnapshot(at: current)
     }
 
     private func refresh(at current: Date, allowHaptic: Bool) {
@@ -538,6 +589,7 @@ struct FocusView: View {
         applyIdleTimer()
         syncNotifications(at: current)
         captureResultIfEnded(at: current, allowHaptic: allowHaptic)
+        persistRecoverySnapshot(at: current)
     }
 
     private func captureResultIfEnded(at current: Date, allowHaptic: Bool) {
@@ -561,6 +613,31 @@ struct FocusView: View {
         if allowHaptic, result?.endedNaturally == true {
             playNaturalCompletionHaptic()
         }
+    }
+
+    private func persistRecoverySnapshot(at current: Date) {
+        guard !didClearRecovery else { return }
+
+        let simple: FocusSessionTimer.Snapshot?
+        let pomodoro: PomodoroSessionTimer.Snapshot?
+        switch mode {
+        case .simple(let timer):
+            simple = timer.snapshot
+            pomodoro = nil
+        case .pomodoro(let timer):
+            simple = nil
+            pomodoro = timer.snapshot
+        }
+
+        FocusRecoveryPersistence.writeImmediate(
+            experienceID: experienceID,
+            task: task,
+            bankedFocusSeconds: bankedFocusSeconds,
+            simple: simple,
+            pomodoro: pomodoro,
+            result: result,
+            at: current
+        )
     }
 
     private func playNaturalCompletionHaptic() {
@@ -602,7 +679,14 @@ struct FocusView: View {
     }
 
     private func finishAndRestore() {
+        // After a successful commit, CompletionView clears the snapshot.
+        // If clear succeeded (or this experience is no longer the pending one),
+        // skip rewriting recovery state from onDisappear.
+        if FocusRecoveryStore.load()?.experienceID != experienceID {
+            didClearRecovery = true
+        }
         restoreIdleTimer()
+        notifications.cancel()
         onDone()
     }
 

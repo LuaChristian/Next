@@ -25,6 +25,7 @@ struct NextApp: App {
             )
             AppearancePreference.applyLaunchOverrides()
             ReminderPreference.applyLaunchOverrides()
+            FocusRecoveryLaunch.applyFixturesIfNeeded()
             NextTheme.applyChrome()
             NextNotificationCenterDelegate.register()
         } catch {

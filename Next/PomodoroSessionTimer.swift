@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum PomodoroSegmentKind: Equatable {
+enum PomodoroSegmentKind: Equatable, Codable {
     case focus(round: Int)
     case breakTime(afterRound: Int)
 
@@ -24,6 +24,17 @@ enum PomodoroSegmentKind: Equatable {
 }
 
 struct PomodoroSessionTimer: Equatable {
+    struct Snapshot: Equatable, Codable {
+        var configuration: PomodoroConfiguration
+        var kind: PomodoroSegmentKind
+        var segment: FocusSessionTimer.Snapshot
+        var completedFocusSeconds: TimeInterval
+        var completedBreakSeconds: TimeInterval
+        var finalizedFocusSeconds: TimeInterval?
+        var endedNaturally: Bool
+        var phase: FocusSessionPhase
+    }
+
     let configuration: PomodoroConfiguration
 
     private(set) var kind: PomodoroSegmentKind
@@ -39,6 +50,30 @@ struct PomodoroSessionTimer: Equatable {
         self.configuration = clean
         self.kind = .focus(round: 1)
         self.segment = FocusSessionTimer(durationMinutes: clean.focusMinutes, startedAt: startedAt)
+    }
+
+    init(restoring snapshot: Snapshot) {
+        configuration = snapshot.configuration.sanitized()
+        kind = snapshot.kind
+        segment = FocusSessionTimer(restoring: snapshot.segment)
+        completedFocusSeconds = max(0, snapshot.completedFocusSeconds)
+        completedBreakSeconds = max(0, snapshot.completedBreakSeconds)
+        finalizedFocusSeconds = snapshot.finalizedFocusSeconds.map { max(0, $0) }
+        endedNaturally = snapshot.endedNaturally
+        phase = snapshot.phase
+    }
+
+    var snapshot: Snapshot {
+        Snapshot(
+            configuration: configuration,
+            kind: kind,
+            segment: segment.snapshot,
+            completedFocusSeconds: completedFocusSeconds,
+            completedBreakSeconds: completedBreakSeconds,
+            finalizedFocusSeconds: finalizedFocusSeconds,
+            endedNaturally: endedNaturally,
+            phase: phase
+        )
     }
 
     /// Next focus round number after the current break (nil when not on a break).
