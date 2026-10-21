@@ -890,6 +890,34 @@ struct PomodoroSessionTimerTests {
         #expect(session.isOnBreak)
         #expect(session.remainingSeconds(at: start.addingTimeInterval(5 * 60 + 200)) == 90)
     }
+
+    @Test func breakReassuranceNamesNextFocusRound() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        #expect(session.isOnBreak)
+        #expect(session.nextFocusRound == 2)
+        #expect(session.breakReassurance.contains("Round 2"))
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(5 * 60 + 20)) == 300.0)
+    }
+
+    #if DEBUG
+    @Test func debugPreviewHelpersJumpWithoutWaitingRealIntervals() {
+        var onBreak = PomodoroSessionTimer(configuration: .recommended, startedAt: start)
+        onBreak.debugEnterBreakAfterRound1(at: start)
+        #expect(onBreak.isOnBreak)
+        #expect(onBreak.currentRound == 1)
+        #expect(onBreak.focusedElapsed(at: start) == TimeInterval(25 * 60))
+
+        var roundTwo = PomodoroSessionTimer(configuration: .recommended, startedAt: start)
+        roundTwo.debugEnterFocusRound2(at: start)
+        #expect(!roundTwo.isOnBreak)
+        #expect(roundTwo.currentRound == 2)
+        #expect(roundTwo.focusedElapsed(at: start) == TimeInterval(25 * 60))
+    }
+    #endif
 }
 
 struct FocusSessionAccountingTests {
@@ -931,6 +959,24 @@ struct FocusSessionAccountingTests {
         #expect(!FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 0, bankedFocus: 0))
         #expect(FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 1, bankedFocus: 0))
         #expect(FocusSessionAccounting.requiresModeSwitchConfirmation(currentFocused: 0, bankedFocus: 1))
+    }
+
+    @Test func displayedAccumulatedFocusSumsBankedAndCurrentWithoutBreaks() {
+        #expect(
+            FocusSessionAccounting.displayedAccumulatedFocus(banked: 180, currentFocused: 60) == 240.0
+        )
+        #expect(
+            FocusSessionAccounting.displayedAccumulatedFocus(banked: 300, currentFocused: 0) == 300.0
+        )
+        #expect(
+            FocusSessionAccounting.accumulatedFocusLabel(seconds: 600) == "10 MIN FOCUSED"
+        )
+    }
+
+    @Test func accumulatedFocusVisibilityRules() {
+        #expect(!FocusSessionAccounting.shouldShowAccumulatedFocus(banked: 0, isPomodoroActive: false))
+        #expect(FocusSessionAccounting.shouldShowAccumulatedFocus(banked: 1, isPomodoroActive: false))
+        #expect(FocusSessionAccounting.shouldShowAccumulatedFocus(banked: 0, isPomodoroActive: true))
     }
 
     @Test func simpleToPomodoroToSimplePreservesTotalFocusInMergedResult() {

@@ -41,6 +41,43 @@ struct PomodoroSessionTimer: Equatable {
         self.segment = FocusSessionTimer(durationMinutes: clean.focusMinutes, startedAt: startedAt)
     }
 
+    /// Next focus round number after the current break (nil when not on a break).
+    var nextFocusRound: Int? {
+        guard case .breakTime(let afterRound) = kind else { return nil }
+        let next = afterRound + 1
+        return next <= configuration.rounds ? next : nil
+    }
+
+    /// Short calm copy for the active break. Empty when focusing.
+    var breakReassurance: String {
+        guard isOnBreak else { return "" }
+        if let next = nextFocusRound {
+            return "Rest a moment. Round \(next) begins next."
+        }
+        return "Rest a moment."
+    }
+
+    #if DEBUG
+    /// UITest / preview helper: jump to break after completing round 1 focus (no real wait).
+    mutating func debugEnterBreakAfterRound1(at now: Date = Date()) {
+        guard configuration.rounds >= 2, phase != .ended else { return }
+        completedFocusSeconds = TimeInterval(configuration.focusMinutes * 60)
+        kind = .breakTime(afterRound: 1)
+        segment = FocusSessionTimer(durationMinutes: configuration.breakMinutes, startedAt: now)
+        phase = .running
+    }
+
+    /// UITest / preview helper: jump to focus round 2 after a completed break.
+    mutating func debugEnterFocusRound2(at now: Date = Date()) {
+        guard configuration.rounds >= 2, phase != .ended else { return }
+        completedFocusSeconds = TimeInterval(configuration.focusMinutes * 60)
+        completedBreakSeconds = TimeInterval(configuration.breakMinutes * 60)
+        kind = .focus(round: 2)
+        segment = FocusSessionTimer(durationMinutes: configuration.focusMinutes, startedAt: now)
+        phase = .running
+    }
+    #endif
+
     var currentRound: Int {
         switch kind {
         case .focus(let round): return round

@@ -39,6 +39,8 @@ struct FocusView: View {
     @State private var pomodoroDraft = PomodoroPreference.configuration()
     @State private var confirmingSwitchToSimple = false
     @State private var didPlayCompletionHaptic = false
+    @State private var isEndingSession = false
+    @State private var isSwitchingMode = false
 
     init(
         task: TaskItem,
@@ -77,7 +79,7 @@ struct FocusView: View {
             timerDisplay
                 .frame(maxWidth: .infinity)
 
-            pomodoroStatus
+            sessionStatus
                 .padding(.top, 18)
                 .frame(maxWidth: .infinity)
 
@@ -187,51 +189,149 @@ struct FocusView: View {
         Text(remainingDisplay)
             .font(.system(size: timerSize, weight: .regular, design: .monospaced))
             .monospacedDigit()
-            .foregroundStyle(NextTheme.ink)
+            .foregroundStyle(isPomodoroBreak ? NextTheme.secondary : NextTheme.ink)
             .minimumScaleFactor(0.55)
             .lineLimit(1)
             .frame(maxWidth: .infinity)
-            .accessibilityLabel("Time remaining")
+            .accessibilityLabel(isPomodoroBreak ? "Break time remaining" : "Time remaining")
             .accessibilityValue(accessibilityRemaining)
             .accessibilityIdentifier("focusTimer")
     }
 
+    private var isPomodoroBreak: Bool {
+        if case .pomodoro(let session) = mode { return session.isOnBreak }
+        return false
+    }
+
+    private var accumulatedFocusSeconds: TimeInterval {
+        FocusSessionAccounting.displayedAccumulatedFocus(
+            banked: bankedFocusSeconds,
+            currentFocused: currentFocusedSeconds(at: now)
+        )
+    }
+
+    private var showsAccumulatedFocus: Bool {
+        FocusSessionAccounting.shouldShowAccumulatedFocus(
+            banked: bankedFocusSeconds,
+            isPomodoroActive: isPomodoroActive
+        )
+    }
+
     @ViewBuilder
-    private var pomodoroStatus: some View {
+    private var sessionStatus: some View {
         switch mode {
         case .simple:
-            Button {
-                pomodoroDraft = PomodoroPreference.configuration()
-                showingPomodoroConfig = true
-            } label: {
-                Text("POMODORO")
-                    .nextFont(12, weight: .medium, relativeTo: .caption)
-                    .tracking(2.0)
-                    .foregroundStyle(NextTheme.secondary)
-                    .frame(minHeight: 44)
+            VStack(spacing: 10) {
+                if showsAccumulatedFocus {
+                    accumulatedFocusText
+                }
+
+                Button {
+                    guard !isEndingSession, !isSwitchingMode else { return }
+                    pomodoroDraft = PomodoroPreference.configuration()
+                    showingPomodoroConfig = true
+                } label: {
+                    Text("POMODORO")
+                        .nextFont(12, weight: .medium, relativeTo: .caption)
+                        .tracking(2.0)
+                        .foregroundStyle(NextTheme.secondary)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Enable Pomodoro")
+                .accessibilityIdentifier("enablePomodoro")
+                .accessibilityHint("Optional. Opens Pomodoro setup for this session.")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Enable Pomodoro")
-            .accessibilityIdentifier("enablePomodoro")
-            .accessibilityHint("Optional. Opens Pomodoro setup for this session.")
 
         case .pomodoro(let session):
-            VStack(spacing: 8) {
-                Text(pomodoroPhaseLabel(session))
-                    .nextFont(12, weight: .medium, relativeTo: .caption)
-                    .tracking(2.0)
-                    .foregroundStyle(NextTheme.botanical)
-                    .accessibilityIdentifier("pomodoroPhase")
-
-                Text(pomodoroTotalsLabel(session))
-                    .nextFont(13)
-                    .foregroundStyle(NextTheme.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("pomodoroTotals")
+            if session.isOnBreak {
+                breakStatus(session)
+            } else {
+                focusStatus(session)
             }
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    private var accumulatedFocusText: some View {
+        Text(FocusSessionAccounting.accumulatedFocusLabel(seconds: accumulatedFocusSeconds))
+            .nextFont(13, weight: .medium, relativeTo: .caption)
+            .tracking(1.6)
+            .foregroundStyle(NextTheme.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("accumulatedFocus")
+            .accessibilityLabel("Accumulated focus")
+            .accessibilityValue(
+                GardenMetrics.focusedDurationSpoken(seconds: accumulatedFocusSeconds)
+            )
+    }
+
+    private func focusStatus(_ session: PomodoroSessionTimer) -> some View {
+        VStack(spacing: 10) {
+            Text("FOCUS")
+                .nextFont(12, weight: .medium, relativeTo: .caption)
+                .tracking(2.2)
+                .foregroundStyle(NextTheme.botanical)
+                .accessibilityIdentifier("pomodoroPhase")
+
+            Text("ROUND \(session.currentRound) OF \(session.totalRounds)")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.6)
+                .foregroundStyle(NextTheme.secondary)
+                .accessibilityIdentifier("pomodoroRound")
+
+            if showsAccumulatedFocus {
+                accumulatedFocusText
+            }
+
+            Text(pomodoroPlannedLabel(session))
+                .nextFont(12, weight: .medium, relativeTo: .caption)
+                .tracking(1.4)
+                .foregroundStyle(NextTheme.secondary)
+                .accessibilityIdentifier("pomodoroPlanned")
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func breakStatus(_ session: PomodoroSessionTimer) -> some View {
+        VStack(spacing: 10) {
+            Text("BREAK")
+                .nextFont(12, weight: .medium, relativeTo: .caption)
+                .tracking(2.2)
+                .foregroundStyle(NextTheme.botanical)
+                .accessibilityIdentifier("pomodoroPhase")
+
+            Text("AFTER ROUND \(session.currentRound) OF \(session.totalRounds)")
+                .nextFont(13, weight: .medium, relativeTo: .caption)
+                .tracking(1.6)
+                .foregroundStyle(NextTheme.secondary)
+                .accessibilityIdentifier("pomodoroRound")
+
+            Text(session.breakReassurance)
+                .nextFont(16)
+                .foregroundStyle(NextTheme.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("pomodoroBreakMessage")
+
+            if let next = session.nextFocusRound {
+                Text("NEXT · ROUND \(next) OF \(session.totalRounds)")
+                    .nextFont(12, weight: .medium, relativeTo: .caption)
+                    .tracking(1.8)
+                    .foregroundStyle(NextTheme.ink)
+                    .accessibilityIdentifier("pomodoroNextRound")
+            }
+
+            if showsAccumulatedFocus {
+                accumulatedFocusText
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func pomodoroPlannedLabel(_ session: PomodoroSessionTimer) -> String {
+        let planned = GardenMetrics.durationText(seconds: session.configuration.plannedFocusSeconds)
+        return "\(planned) PLANNED FOCUS"
     }
 
     private var timerSize: CGFloat {
@@ -256,42 +356,39 @@ struct FocusView: View {
         return "\(minutes) minutes, \(seconds) seconds"
     }
 
-    private func pomodoroPhaseLabel(_ session: PomodoroSessionTimer) -> String {
-        if session.isOnBreak {
-            return "BREAK · AFTER ROUND \(session.currentRound) OF \(session.totalRounds)"
-        }
-        return "FOCUS · ROUND \(session.currentRound) OF \(session.totalRounds)"
+    private var pauseResumeTitle: String {
+        mode.phase == .paused ? "RESUME" : "PAUSE"
     }
 
-    private func pomodoroTotalsLabel(_ session: PomodoroSessionTimer) -> String {
-        let planned = GardenMetrics.durationText(seconds: session.configuration.plannedFocusSeconds)
-        let elapsed = GardenMetrics.durationText(
-            seconds: session.totalElapsedIncludingBreaks(at: now) + bankedFocusSeconds
-        )
-        return "\(planned) PLANNED FOCUS  ·  \(elapsed) ELAPSED"
+    private var endSessionTitle: String {
+        isPomodoroBreak ? "End session" : "Finish early"
     }
 
     private var activeControls: some View {
         VStack(spacing: 18) {
             NextHairline()
 
-            Button(mode.phase == .paused ? "RESUME" : "PAUSE") {
+            Button(pauseResumeTitle) {
                 togglePause()
             }
             .nextFont(13, weight: .semibold)
             .tracking(2.2)
             .foregroundStyle(NextTheme.botanical)
             .frame(maxWidth: .infinity, minHeight: 44)
+            .disabled(isEndingSession || isSwitchingMode || result != nil)
+            .accessibilityIdentifier("focusPauseResume")
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: mode.phase)
 
             NextHairline()
 
-            Button("Finish early") {
+            Button(endSessionTitle) {
                 finishEarly()
             }
             .nextFont(16)
             .foregroundStyle(NextTheme.secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
+            .disabled(isEndingSession || isSwitchingMode || result != nil)
+            .accessibilityIdentifier("focusEndSession")
         }
     }
 
@@ -307,6 +404,7 @@ struct FocusView: View {
     }
 
     private func requestSwitchToSimpleFocus() {
+        guard !isEndingSession, !isSwitchingMode, result == nil else { return }
         let current = Date()
         if FocusSessionAccounting.requiresModeSwitchConfirmation(
             currentFocused: currentFocusedSeconds(at: current),
@@ -319,6 +417,8 @@ struct FocusView: View {
     }
 
     private func applyBeginPomodoro(_ configuration: PomodoroConfiguration, at current: Date = Date()) {
+        guard !isEndingSession, result == nil else { return }
+        isSwitchingMode = true
         let wasPaused = mode.phase == .paused
         bankedFocusSeconds = FocusSessionAccounting.bankFocus(
             currentFocused: currentFocusedSeconds(at: current),
@@ -327,16 +427,20 @@ struct FocusView: View {
         notifications.cancel()
         didPlayCompletionHaptic = false
         var session = PomodoroSessionTimer(configuration: configuration, startedAt: current)
-        if wasPaused {
+        applyPomodoroPreviewIfNeeded(&session, at: current)
+        if wasPaused || NextUITestLaunch.pomodoroPreview() == .paused {
             session.pause(at: current)
         }
         mode = .pomodoro(session)
         now = current
+        isSwitchingMode = false
         applyIdleTimer()
         syncNotifications(at: current)
     }
 
     private func applyBeginSimpleFocus(at current: Date = Date()) {
+        guard !isEndingSession, result == nil else { return }
+        isSwitchingMode = true
         let wasPaused = mode.phase == .paused
         bankedFocusSeconds = FocusSessionAccounting.bankFocus(
             currentFocused: currentFocusedSeconds(at: current),
@@ -350,11 +454,28 @@ struct FocusView: View {
         }
         mode = .simple(timer)
         now = current
+        isSwitchingMode = false
         applyIdleTimer()
         syncNotifications(at: current)
     }
 
+    private func applyPomodoroPreviewIfNeeded(_ session: inout PomodoroSessionTimer, at current: Date) {
+        #if DEBUG
+        switch NextUITestLaunch.pomodoroPreview() {
+        case .breakTime:
+            session.debugEnterBreakAfterRound1(at: current)
+        case .focusRound2:
+            session.debugEnterFocusRound2(at: current)
+        case .paused, .none:
+            break
+        }
+        #else
+        _ = (session, current)
+        #endif
+    }
+
     private func togglePause() {
+        guard !isEndingSession, !isSwitchingMode, result == nil else { return }
         let current = Date()
         switch mode {
         case .simple(var timer):
@@ -379,6 +500,8 @@ struct FocusView: View {
     }
 
     private func finishEarly() {
+        guard !isEndingSession, !isSwitchingMode, result == nil else { return }
+        isEndingSession = true
         let current = Date()
         switch mode {
         case .simple(var timer):
@@ -426,8 +549,13 @@ struct FocusView: View {
         case .pomodoro(let timer):
             raw = timer.makeResult(for: task, at: current)
         }
-        guard let raw else { return }
+        guard let raw else {
+            if !isEndingSession { return }
+            // finishEarly already ended the timer; keep ending latch only when result lands.
+            return
+        }
         result = FocusSessionAccounting.mergeBankedFocus(bankedFocusSeconds, into: raw)
+        isEndingSession = true
         applyIdleTimer()
         notifications.cancel()
         if allowHaptic, result?.endedNaturally == true {
@@ -529,8 +657,8 @@ private struct FocusSettingsView: View {
                     .foregroundStyle(NextTheme.ink)
                 Text(
                     isPomodoroActive
-                        ? "Pomodoro is active for this session. Breaks never count as focused time."
-                        : "Optional. Keep Simple Focus, or set up timed rounds for this session."
+                        ? "Pomodoro is active. Focused time so far is kept if you switch back. Breaks never count as focus."
+                        : "Optional. Stay with Simple Focus, or set up timed rounds for this session."
                 )
                 .nextFont(16)
                 .foregroundStyle(NextTheme.secondary)
