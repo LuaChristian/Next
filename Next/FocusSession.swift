@@ -78,24 +78,16 @@ enum FocusSessionStore {
         result: FocusSessionResult,
         taskWasFinished: Bool,
         context: ModelContext,
-        completedAt: Date = Date(),
-        experienceID: UUID? = nil
+        completedAt: Date = Date()
     ) throws -> FocusSession {
-        // Exactly-once: recovery uses a stable experienceID as FocusSession.id.
-        if let experienceID {
-            let existing = try context.fetch(
-                FetchDescriptor<FocusSession>(predicate: #Predicate { $0.id == experienceID })
-            )
-            if let first = existing.first {
-                return first
-            }
+        guard let goalID = result.task.goalID else {
+            throw FocusSessionStoreError.missingIdentity
         }
 
         let taskID = result.task.id
-        var goal: Goal?
-        if let goalID = result.task.goalID {
-            let goals = try context.fetch(FetchDescriptor<Goal>(predicate: #Predicate { $0.id == goalID }))
-            goal = goals.first
+        let goals = try context.fetch(FetchDescriptor<Goal>(predicate: #Predicate { $0.id == goalID }))
+        guard let goal = goals.first else {
+            throw FocusSessionStoreError.goalNotFound
         }
 
         let tasks = try context.fetch(FetchDescriptor<GoalTask>(predicate: #Predicate { $0.id == taskID }))
@@ -103,11 +95,7 @@ enum FocusSessionStore {
         if taskWasFinished {
             task?.complete(at: completedAt)
         }
-
-        // Prefer live relationships; fall back to snapshots when the task/goal was deleted.
-        // Never attach focus to a different task/goal.
         let session = FocusSession(
-            id: experienceID ?? UUID(),
             completedAt: completedAt,
             plannedDurationSeconds: result.plannedDurationSeconds,
             focusedDurationSeconds: result.focusedDurationSeconds,

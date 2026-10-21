@@ -1109,64 +1109,6 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
-    func testSessionRecoveryVisualReview() throws {
-        let review = SessionRecoveryCapture(self)
-        let suite = "next.uitest.recovery-review-\(UUID().uuidString)"
-
-        func launchRecovery(_ fixture: String, appearance: String = "light") -> XCUIApplication {
-            let app = XCUIApplication()
-            app.launchArguments = [
-                "UITEST_SEED_GARDEN",
-                "UITEST_DEFAULTS_SUITE", suite,
-                "UITEST_APPEARANCE", appearance,
-                "UITEST_FOCUS_RECOVERY", fixture,
-                "UITEST_WRITE_REVIEW_SHOTS"
-            ]
-            app.launch()
-            return app
-        }
-
-        var app = launchRecovery("simple")
-        XCTAssertTrue(app.staticTexts["focusTimer"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Enable Pomodoro"].waitForExistence(timeout: 3))
-        review.capture(app, "01 Recovered running Simple Focus")
-        app.terminate()
-
-        app = launchRecovery("pausedSimple")
-        XCTAssertTrue(app.buttons["RESUME"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["accumulatedFocus"].waitForExistence(timeout: 3))
-        review.capture(app, "02 Recovered paused Simple Focus")
-        app.terminate()
-
-        app = launchRecovery("pomodoroFocus")
-        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["pomodoroPhase"].label.uppercased(), "FOCUS")
-        review.capture(app, "03 Recovered Pomodoro focus")
-        app.terminate()
-
-        app = launchRecovery("pomodoroBreak")
-        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["pomodoroPhase"].label.uppercased(), "BREAK")
-        review.capture(app, "04 Recovered Pomodoro break")
-        app.terminate()
-
-        app = launchRecovery("pausedPomodoro")
-        XCTAssertTrue(app.buttons["RESUME"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 3))
-        review.capture(app, "05 Recovered paused Pomodoro")
-        app.terminate()
-
-        app = launchRecovery("completed")
-        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 5))
-        review.capture(app, "06 Recovered naturally completed session")
-        app.terminate()
-
-        app = launchRecovery("pomodoroBreak", appearance: "dark")
-        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 5))
-        review.capture(app, "07 Recovered session in Dark mode")
-    }
-
-    @MainActor
     func testFocusRefinementVisualReview() throws {
         let review = FocusRefinementCapture(self)
 
@@ -3285,17 +3227,6 @@ private struct PomodoroCapture {
 private struct FocusRefinementCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M5-Focus-Experience"
-    )
-    let test: XCTestCase
-    init(_ test: XCTestCase) { self.test = test }
-    func capture(_ app: XCUIApplication, _ name: String) {
-        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
-    }
-}
-
-private struct SessionRecoveryCapture {
-    static let directory = URL(fileURLWithPath:
-        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M6-Session-Recovery"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

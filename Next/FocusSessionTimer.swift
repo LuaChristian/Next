@@ -7,24 +7,13 @@
 
 import Foundation
 
-enum FocusSessionPhase: String, Equatable, Codable {
+enum FocusSessionPhase: Equatable {
     case running
     case paused
     case ended
 }
 
 struct FocusSessionTimer: Equatable {
-    /// Codable anchors for durable recovery. Derived remaining time is recomputed from these.
-    struct Snapshot: Equatable, Codable {
-        var duration: TimeInterval
-        var startedAt: Date
-        var totalPaused: TimeInterval
-        var pausedAt: Date?
-        var endedAt: Date?
-        var endedNaturally: Bool
-        var phase: FocusSessionPhase
-    }
-
     let duration: TimeInterval
 
     private var startedAt: Date
@@ -38,33 +27,6 @@ struct FocusSessionTimer: Equatable {
     init(durationMinutes: Int, startedAt: Date = Date()) {
         duration = TimeInterval(durationMinutes * 60)
         self.startedAt = startedAt
-    }
-
-    init(duration: TimeInterval, startedAt: Date = Date()) {
-        self.duration = max(0, duration)
-        self.startedAt = startedAt
-    }
-
-    init(restoring snapshot: Snapshot) {
-        duration = max(0, snapshot.duration)
-        startedAt = snapshot.startedAt
-        totalPaused = max(0, snapshot.totalPaused)
-        pausedAt = snapshot.pausedAt
-        endedAt = snapshot.endedAt
-        endedNaturally = snapshot.endedNaturally
-        phase = snapshot.phase
-    }
-
-    var snapshot: Snapshot {
-        Snapshot(
-            duration: duration,
-            startedAt: startedAt,
-            totalPaused: totalPaused,
-            pausedAt: pausedAt,
-            endedAt: endedAt,
-            endedNaturally: endedNaturally,
-            phase: phase
-        )
     }
 
     /// Wall-clock moment active elapsed reaches `duration` while running (pause time already folded in).

@@ -14,8 +14,6 @@ struct CompletionView: View {
     @Query(sort: \Goal.createdAt) private var goals: [Goal]
 
     let result: FocusSessionResult
-    /// Stable id for exactly-once FocusSession persistence across recovery.
-    var experienceID: UUID? = nil
     let onFinished: () -> Void
 
     @State private var completion = SessionCompletionState()
@@ -182,23 +180,19 @@ struct CompletionView: View {
 
     private func commitAndFinish() {
         guard !didCommit else { return }
-        guard let answer = completion.taskCompletion else { return }
         didCommit = true
-        do {
-            try FocusSessionStore.commit(
-                result: result,
-                taskWasFinished: answer == .completed,
-                context: modelContext,
-                experienceID: experienceID
-            )
-            // Clear recovery only after a successful commit (or idempotent replay).
-            FocusRecoveryStore.clear()
-            onFinished()
-        } catch {
-            // Keep awaiting-completion snapshot; stay on Completion for retry.
-            // Idempotent experienceID commit prevents duplicates on success.
-            didCommit = false
+        if let answer = completion.taskCompletion {
+            do {
+                try FocusSessionStore.commit(
+                    result: result,
+                    taskWasFinished: answer == .completed,
+                    context: modelContext
+                )
+            } catch {
+                // Leave Completion without claiming Garden progress.
+            }
         }
+        onFinished()
     }
 }
 
