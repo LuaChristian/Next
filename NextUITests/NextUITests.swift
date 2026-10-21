@@ -1415,6 +1415,139 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsNavigationVisualReview() throws {
+        let review = SettingsNavigationCapture(self)
+
+        // 01 — Settings hub light
+        var app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["settingsHistoryLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAboutLink"].exists)
+        review.capture(app, "01 Settings navigation hub — light mode")
+
+        // 02 — Appearance
+        openSettingsDestination("settingsAppearanceLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
+        review.capture(app, "02 Appearance settings")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+
+        // 03 — Reminders
+        openSettingsDestination("settingsRemindersLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.switches["dailyReminderToggle"].waitForExistence(timeout: 2))
+        review.capture(app, "03 Reminders settings")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // 04 — History from Settings
+        openSettingsDestination("settingsHistoryLink", in: app)
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        review.capture(app, "04 History opened from Settings")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // 05 — About Next
+        openSettingsDestination("settingsAboutLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["aboutNextScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["aboutVersionLabel"].waitForExistence(timeout: 2))
+        review.capture(app, "05 About Next")
+        app.terminate()
+
+        // 06 — Settings hub dark
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
+        review.capture(app, "06 Settings navigation hub — dark mode")
+
+        // 07 — Dedicated page dark
+        openSettingsDestination("settingsAppearanceLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceScreen"].waitForExistence(timeout: 3))
+        review.capture(app, "07 A dedicated settings page — dark mode")
+        app.terminate()
+
+        // 08 — Large Dynamic Type
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        if #available(iOS 17.0, *) {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        }
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
+        reveal(app.descendants(matching: .any)["settingsAboutLink"], in: app)
+        review.capture(app, "08 Settings with large Dynamic Type")
+    }
+
+    @MainActor
+    func testSettingsNavigationSmallScreenReview() throws {
+        let review = SettingsNavigationCapture(self)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
+        review.capture(app, "09 Settings on a smaller device")
+    }
+
+    @MainActor
+    func testSettingsNavigationHubOpensEachDestination() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "off",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
+
+        openSettingsDestination("settingsAppearanceLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceScreen"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        openSettingsDestination("settingsRemindersLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersScreen"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        openSettingsDestination("settingsHistoryLink", in: app)
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        openSettingsDestination("settingsAboutLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["aboutNextScreen"].waitForExistence(timeout: 2))
+        let version = app.descendants(matching: .any)["aboutVersionLabel"]
+        XCTAssertTrue(version.waitForExistence(timeout: 2))
+        let label = version.label
+        XCTAssertTrue(label.contains("Version"), "About should show version label, got: \(label)")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testLivingGardenOpensCorrectGoalAndPreservesPlantFlow() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GROWTH", "UITEST_APPEARANCE", "light"]
@@ -2433,12 +2566,13 @@ final class NextUITests: XCTestCase {
 
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["APPEARANCE"].exists)
-        XCTAssertTrue(app.staticTexts["REMINDERS"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAboutLink"].exists)
         XCTAssertFalse(app.staticTexts["Calm Garden by day. Twilight Quiet by night."].exists)
         XCTAssertFalse(app.staticTexts["Soft, never urgent."].exists)
 
-        app.buttons["settingsHistoryLink"].tap()
+        openSettingsDestination("settingsHistoryLink", in: app)
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -2451,12 +2585,13 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "light"]
         app.launch()
         app.tabBars.buttons["Settings"].tap()
+        openSettingsDestination("settingsAppearanceLink", in: app)
         XCTAssertTrue(app.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
         XCTAssertEqual(app.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
 
         app.descendants(matching: .any)["appearance-dark"].tap()
         XCTAssertEqual(app.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
-        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceScreen"].exists)
 
         app.descendants(matching: .any)["appearance-light"].tap()
         XCTAssertEqual(app.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
@@ -2468,6 +2603,7 @@ final class NextUITests: XCTestCase {
         relaunch.launchArguments = ["UITEST_SEED_GARDEN"]
         relaunch.launch()
         relaunch.tabBars.buttons["Settings"].tap()
+        openSettingsDestination("settingsAppearanceLink", in: relaunch)
         XCTAssertEqual(relaunch.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
         relaunch.descendants(matching: .any)["appearance-system"].tap()
         relaunch.terminate()
@@ -2484,6 +2620,7 @@ final class NextUITests: XCTestCase {
         ]
         app.launch()
         app.tabBars.buttons["Settings"].tap()
+        openSettingsDestination("settingsRemindersLink", in: app)
         let toggle = app.switches["dailyReminderToggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 2))
         XCTAssertEqual(toggle.value as? String, "0")
@@ -2566,6 +2703,7 @@ final class NextUITests: XCTestCase {
 
         let switchApp = launch("light")
         switchApp.tabBars.buttons["Settings"].tap()
+        openSettingsDestination("settingsAppearanceLink", in: switchApp)
         XCTAssertEqual(switchApp.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
         switchApp.descendants(matching: .any)["appearance-dark"].tap()
         XCTAssertEqual(switchApp.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
@@ -3237,6 +3375,17 @@ final class NextUITests: XCTestCase {
         return app
     }
 
+    private func openSettingsDestination(_ identifier: String, in app: XCUIApplication) {
+        let link = app.descendants(matching: .any)[identifier]
+        reveal(link, in: app)
+        XCTAssertTrue(link.waitForExistence(timeout: 3), "Missing Settings link \(identifier)")
+        if link.isHittable {
+            link.tap()
+        } else {
+            link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+    }
+
     private func gardenRow(_ title: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["gardenGoal-\(title)"]
     }
@@ -3655,6 +3804,17 @@ private struct BotanicalCollectionsCapture {
 private struct LivingGardenCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M9-Living-Garden"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct SettingsNavigationCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M10-Settings-Navigation"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

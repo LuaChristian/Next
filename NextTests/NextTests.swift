@@ -3851,6 +3851,28 @@ struct FocusExperienceTests {
     }
 }
 
+struct SettingsNavigationTests {
+    @Test func destinationsExposeStableHubMetadata() {
+        #expect(SettingsDestination.allCases.count == 4)
+        #expect(SettingsDestination.history.accessibilityIdentifier == "settingsHistoryLink")
+        #expect(SettingsDestination.appearance.accessibilityIdentifier == "settingsAppearanceLink")
+        #expect(SettingsDestination.reminders.accessibilityIdentifier == "settingsRemindersLink")
+        #expect(SettingsDestination.about.accessibilityIdentifier == "settingsAboutLink")
+        #expect(SettingsDestination.history.subtitle == "Focus sessions and progress")
+        #expect(SettingsDestination.appearance.subtitle == "Light, dark, and system theme")
+        #expect(SettingsDestination.reminders.subtitle == "Daily reminder preferences")
+        #expect(SettingsDestination.about.subtitle == "App information and version")
+    }
+
+    @Test func appVersionInfoReadsBundleMetadata() {
+        let label = AppVersionInfo.versionAndBuildLabel
+        #expect(label.hasPrefix("Version "))
+        #expect(label.contains("("))
+        #expect(!AppVersionInfo.shortVersion.isEmpty)
+        #expect(!AppVersionInfo.buildNumber.isEmpty)
+    }
+}
+
 struct AppearancePreferenceTests {
     @Test func defaultAndUnknownFallBackToSystem() {
         #expect(AppearancePreference.resolve(stored: nil) == .system)
@@ -3909,7 +3931,7 @@ struct AppearancePreferenceTests {
         #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
-        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.plantVariantRaw == "broadLeaf")
+        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.plantVariantRaw == "fern")
     }
 
     @Test func lightAndDarkTextMeetWCAGAAAgainstCanvas() {
