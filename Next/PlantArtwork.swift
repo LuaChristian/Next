@@ -62,9 +62,7 @@ enum PlantArtwork {
     enum Source: Equatable {
         /// Named asset-catalog image. Drawn without template tinting.
         case asset(String)
-        /// Programmatic cozy pixel-art species (V3-M7+).
-        case pixel(PixelPlantSpecies)
-        /// Existing Canvas/Path botanical illustration (retained as fallback).
+        /// Existing Canvas/Path illustration.
         case canvas
     }
 
@@ -81,24 +79,17 @@ enum PlantArtwork {
         "\(variant.rawValue)-\(stage.rawValue)"
     }
 
-    /// Maps identity + growth to artwork.
-    /// Order: catalog asset → pixel species (when mapped) → Canvas botanical.
+    /// Maps identity + growth to artwork. Asset wins when present; else Canvas.
     static func resolve(variant: PlantVariant, stage: GardenGrowthStage) -> Source {
         let name = assetName(variant: variant, stage: stage)
         if hasAsset(named: name) {
             return .asset(name)
-        }
-        if let species = PixelPlantPresentation.species(for: variant) {
-            return .pixel(species)
         }
         return .canvas
     }
 
     static func resetTestOverrides() {
         assetAvailability = nil
-        #if DEBUG
-        PixelPlantPresentation.resetTestOverrides()
-        #endif
     }
 
     private static func hasAsset(named name: String) -> Bool {

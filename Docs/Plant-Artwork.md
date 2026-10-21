@@ -3,13 +3,7 @@
 Next maps each **plant variant × growth stage** to artwork through `PlantArtwork`.
 Garden growth, FocusSession persistence, and Goal identity are unchanged.
 
-**Resolution order (V3-M7):**
-
-1. Asset-catalog image `plant-{variant}-{stage}` when present  
-2. Pixel-art species via `PixelPlantPresentation.species(for:)` (production maps every variant to the reference **fern**)  
-3. Built-in Canvas botanical fallback (`PlantDrawing`) when mapping returns `nil`  
-
-Canvas botanical code remains for fallback. Fern stage showcase / UITest fixtures are DEBUG-only.
+Until custom images are supplied, the app draws the built-in Canvas plants.
 
 ## Naming
 

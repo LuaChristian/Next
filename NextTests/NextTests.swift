@@ -4018,7 +4018,6 @@ struct PlantIdentityTests {
     }
 }
 
-@Suite(.serialized)
 struct PlantArtworkResolutionTests {
     @Test func assetNamesFollowConventionForAllPairs() {
         let expected: [(PlantVariant, GardenGrowthStage, String)] = [
@@ -4045,20 +4044,8 @@ struct PlantArtworkResolutionTests {
         #expect(allNames.count == PlantVariant.allCases.count * GardenGrowthStage.allCases.count)
     }
 
-    @Test func missingAssetsFallBackToPixelFern() {
+    @Test func missingAssetsFallBackToCanvas() {
         PlantArtwork.assetAvailability = { _ in false }
-        defer { PlantArtwork.resetTestOverrides() }
-
-        for variant in PlantVariant.allCases {
-            for stage in GardenGrowthStage.allCases {
-                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .pixel(.fern))
-            }
-        }
-    }
-
-    @Test func missingAssetsFallBackToCanvasWhenPixelMappingNil() {
-        PlantArtwork.assetAvailability = { _ in false }
-        PixelPlantPresentation.testSpeciesOverride = { _ in nil }
         defer { PlantArtwork.resetTestOverrides() }
 
         for variant in PlantVariant.allCases {
@@ -4084,9 +4071,8 @@ struct PlantArtworkResolutionTests {
             PlantArtwork.resolve(variant: .roundedLeaf, stage: .mature)
                 == .asset("plant-roundedLeaf-mature")
         )
-        // No asset → production fern pixel mapping.
-        #expect(PlantArtwork.resolve(variant: .narrowLeaf, stage: .sprout) == .pixel(.fern))
-        #expect(PlantArtwork.resolve(variant: .branching, stage: .growing) == .pixel(.fern))
+        #expect(PlantArtwork.resolve(variant: .narrowLeaf, stage: .sprout) == .canvas)
+        #expect(PlantArtwork.resolve(variant: .branching, stage: .growing) == .canvas)
     }
 
     @Test func resolutionIsDeterministic() {
@@ -4102,91 +4088,14 @@ struct PlantArtworkResolutionTests {
         }
     }
 
-    @Test func noCatalogAssetsMeansPixelFernFoundation() {
-        // Production catalog currently ships no plant-* images; V3-M7 uses fern pixels.
+    @Test func noCatalogAssetsMeansFullCanvasFallback() {
+        // Production catalog currently ships no plant-* images.
         PlantArtwork.resetTestOverrides()
         for variant in PlantVariant.allCases {
             for stage in GardenGrowthStage.allCases {
-                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .pixel(.fern))
+                #expect(PlantArtwork.resolve(variant: variant, stage: stage) == .canvas)
             }
         }
-    }
-}
-
-@Suite(.serialized)
-struct PixelPlantArtTests {
-    @Test func fernHasDistinctGridForEveryStage() {
-        let grids = GardenGrowthStage.allCases.map { PixelPlantCatalog.grid(species: .fern, stage: $0) }
-        #expect(grids.count == 5)
-        for grid in grids {
-            #expect(grid.width == FernPixelArt.canvasWidth)
-            #expect(grid.height == FernPixelArt.canvasHeight)
-            #expect(grid.cells.contains { $0 != 0 })
-        }
-        // Stages must not be identical copies.
-        for i in 0..<grids.count {
-            for j in (i + 1)..<grids.count {
-                #expect(grids[i] != grids[j])
-            }
-        }
-    }
-
-    @Test func fernStagesShareAnchorAndSoilTreatment() {
-        for stage in GardenGrowthStage.allCases {
-            let grid = FernPixelArt.grid(stage: stage)
-            // Bottom rows always include soil (palette 1).
-            let bottom = grid.cells.suffix(grid.width * 3)
-            #expect(bottom.contains(1))
-        }
-    }
-
-    @Test func stageMappingIsDeterministic() {
-        for stage in GardenGrowthStage.allCases {
-            let a = PixelPlantCatalog.grid(species: .fern, stage: stage)
-            let b = PixelPlantCatalog.grid(species: .fern, stage: stage)
-            #expect(a == b)
-        }
-    }
-
-    @Test func growthThresholdsUnchangedByPixelArt() {
-        #expect(GardenGrowth.stage(for: 29 * 60) == .seedling)
-        #expect(GardenGrowth.stage(for: 30 * 60) == .sprout)
-        #expect(GardenGrowth.stage(for: 120 * 60) == .young)
-        #expect(GardenGrowth.stage(for: 300 * 60) == .growing)
-        #expect(GardenGrowth.stage(for: 600 * 60) == .mature)
-    }
-
-    @MainActor
-    @Test func existingPlantIdentitiesRemainUnchangedAfterPixelPresentation() throws {
-        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
-        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, plantVariant: .narrowLeaf)
-        context.insert(goal)
-        try context.save()
-
-        #expect(goal.plantVariant == .narrowLeaf)
-        #expect(goal.plantVariantRaw == PlantVariant.narrowLeaf.rawValue)
-        #expect(PlantArtwork.resolve(variant: goal.plantVariant, stage: .seedling) == .pixel(.fern))
-        // Identity preserved even though visual is fern.
-        #expect(goal.plantVariant == .narrowLeaf)
-    }
-
-    @Test func canvasFallbackAvailableWhenPixelMappingNil() {
-        PlantArtwork.assetAvailability = { _ in false }
-        PixelPlantPresentation.testSpeciesOverride = { _ in nil }
-        defer { PlantArtwork.resetTestOverrides() }
-
-        #expect(PlantArtwork.resolve(variant: .broadLeaf, stage: .mature) == .canvas)
-        #expect(PlantArtwork.resolve(variant: .roundedLeaf, stage: .young) == .canvas)
-    }
-
-    @Test func integerScaleNeverZeroForPositiveFrames() {
-        let grid = FernPixelArt.grid(stage: .sprout)
-        #expect(grid.width > 0)
-        #expect(grid.height > 0)
-        // Renderer uses max(1, floor(...)) — mirrored here for the contract.
-        let size = CGSize(width: 48, height: 68)
-        let scale = max(1, floor(min(size.width / CGFloat(grid.width), size.height / CGFloat(grid.height))))
-        #expect(scale >= 1)
     }
 }
 
