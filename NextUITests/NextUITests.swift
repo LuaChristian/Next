@@ -1950,6 +1950,117 @@ final class NextUITests: XCTestCase {
         large.terminate()
     }
 
+    // MARK: - V3-M2 Focus History Management
+
+    @MainActor
+    func testM2DeleteFocusSessionCancelAndConfirm() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_HISTORY", "UITEST_APPEARANCE", "light"]
+        app.launch()
+
+        openHistoryFromSettings(in: app)
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["historyWeeklySummary"].waitForExistence(timeout: 2))
+
+        let row = app.descendants(matching: .any)["historySession-Review amino acids"]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        row.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 2))
+        delete.tap()
+
+        XCTAssertTrue(app.buttons["Delete Session"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Cancel"].exists)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["historySession-Review amino acids"].waitForExistence(timeout: 2))
+
+        let rowAgain = app.descendants(matching: .any)["historySession-Review amino acids"]
+        rowAgain.swipeLeft()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        app.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Delete Session"].waitForExistence(timeout: 2))
+        app.buttons["Delete Session"].tap()
+        XCTAssertFalse(app.descendants(matching: .any)["historySession-Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["HISTORY"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["historyWeeklySummary"].exists)
+    }
+
+    @MainActor
+    func testM2DeleteFocusSessionAccessibilityAction() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_HISTORY", "UITEST_APPEARANCE", "light"]
+        app.launch()
+        openHistoryFromSettings(in: app)
+
+        let row = app.descendants(matching: .any)["historySession-Build Next"]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        // VoiceOver-style delete affordance.
+        row.swipeLeft()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.buttons["Delete"].label, "Delete")
+    }
+
+    @MainActor
+    func testM2VisualReview() throws {
+        let review = FocusHistoryCapture(self)
+
+        func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "UITEST_SEED_HISTORY",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_REMINDER", "off"
+            ] + extra
+            app.launch()
+            return app
+        }
+
+        let light = launch("light")
+        openHistoryFromSettings(in: light)
+        XCTAssertTrue(light.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        review.capture(light, "01 History — existing sessions Light")
+
+        let row = light.descendants(matching: .any)["historySession-Review amino acids"]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        row.swipeLeft()
+        XCTAssertTrue(light.buttons["Delete"].waitForExistence(timeout: 2))
+        review.capture(light, "02 History — delete affordance")
+
+        light.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(light.buttons["Delete Session"].waitForExistence(timeout: 2))
+        review.capture(light, "03 History — delete confirmation")
+
+        light.buttons["Delete Session"].tap()
+        XCTAssertFalse(light.descendants(matching: .any)["historySession-Review amino acids"].waitForExistence(timeout: 2))
+        review.capture(light, "04 History — after deletion")
+        light.terminate()
+
+        let dark = launch("dark")
+        openHistoryFromSettings(in: dark)
+        XCTAssertTrue(dark.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        review.capture(dark, "05 History — Dark")
+        dark.terminate()
+
+        let large = launch("light", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        openHistoryFromSettings(in: large)
+        XCTAssertTrue(large.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+        reveal(large.descendants(matching: .any)["historyWeeklySummary"], in: large)
+        review.capture(large, "06 History — Large Dynamic Type")
+        large.terminate()
+    }
+
+    private func openHistoryFromSettings(in app: XCUIApplication) {
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+        let link = app.buttons["settingsHistoryLink"]
+        reveal(link, in: app)
+        XCTAssertTrue(link.waitForExistence(timeout: 2))
+        link.tap()
+    }
+
     // MARK: - V3-M1 Goal Organization & Recommendation Filtering
 
     @MainActor
@@ -2668,6 +2779,17 @@ private struct WalkthroughCapture {
 private struct GoalOrganizationCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M1-Goal-Organization"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct FocusHistoryCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M2-Focus-History-Management"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

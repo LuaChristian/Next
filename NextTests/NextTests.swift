@@ -3832,4 +3832,371 @@ struct RecommendationScopeTests {
     }
 }
 
+// MARK: - V3-M2 Focus History Management
+
+struct FocusSessionDeletionTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    /// Friday, 25 September 2026, noon UTC. Week (Monday start) is 21–27 Sep.
+    private var now: Date {
+        calendar.date(from: DateComponents(year: 2026, month: 9, day: 25, hour: 12))!
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    @MainActor
+    @Test func deleteOneSessionAmongSeveralPreservesOthers() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let keep = FocusSession(
+            id: UUID(),
+            completedAt: now,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Keep me",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        let remove = FocusSession(
+            id: UUID(),
+            completedAt: now.addingTimeInterval(-3600),
+            plannedDurationSeconds: 900,
+            focusedDurationSeconds: 900,
+            endedNaturally: true,
+            taskWasFinished: true,
+            taskTitleSnapshot: "Remove me",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        context.insert(keep)
+        context.insert(remove)
+        try context.save()
+
+        try PlanningStore.deleteFocusSession(remove, context: context)
+
+        let remaining = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.id == keep.id)
+        #expect(remaining.first?.taskTitleSnapshot == "Keep me")
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+    }
+
+    @MainActor
+    @Test func deleteOneOfTwoIdenticalTitlesIndependently() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let first = FocusSession(
+            id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001")!,
+            completedAt: now,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Review amino acids",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        let second = FocusSession(
+            id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000002")!,
+            completedAt: now.addingTimeInterval(-7200),
+            plannedDurationSeconds: 1200,
+            focusedDurationSeconds: 1200,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Review amino acids",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        context.insert(first)
+        context.insert(second)
+        try context.save()
+
+        try PlanningStore.deleteFocusSession(first, context: context)
+
+        let remaining = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.id == second.id)
+        #expect(remaining.first?.taskTitleSnapshot == "Review amino acids")
+        #expect(remaining.first?.focusedDurationSeconds == 1200)
+    }
+
+    @MainActor
+    @Test func weeklyMetricsRecalculateAndOlderDeletionLeavesCurrentWeekUnchanged() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let thisWeek = FocusSession(
+            completedAt: now,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: true,
+            taskTitleSnapshot: "This week",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        let alsoThisWeek = FocusSession(
+            completedAt: date(2026, 9, 23, 10),
+            plannedDurationSeconds: 2700,
+            focusedDurationSeconds: 2700,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Also this week",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        let lastWeek = FocusSession(
+            completedAt: date(2026, 9, 18, 10),
+            plannedDurationSeconds: 3600,
+            focusedDurationSeconds: 3600,
+            endedNaturally: true,
+            taskWasFinished: true,
+            taskTitleSnapshot: "Last week",
+            goalTitleSnapshot: "MCAT",
+            goal: goal
+        )
+        [thisWeek, alsoThisWeek, lastWeek].forEach(context.insert)
+        try context.save()
+
+        let before = HistoryPresentation.weeklySummary(
+            sessions: try context.fetch(FetchDescriptor<FocusSession>()).map(\.historyRecord),
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(before.focusedDuration == 4500)
+        #expect(before.sessionCount == 2)
+        #expect(before.tasksFinished == 1)
+
+        try PlanningStore.deleteFocusSession(lastWeek, context: context)
+
+        let afterOlderDelete = HistoryPresentation.weeklySummary(
+            sessions: try context.fetch(FetchDescriptor<FocusSession>()).map(\.historyRecord),
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(afterOlderDelete == before)
+
+        try PlanningStore.deleteFocusSession(alsoThisWeek, context: context)
+
+        let afterWeekDelete = HistoryPresentation.weeklySummary(
+            sessions: try context.fetch(FetchDescriptor<FocusSession>()).map(\.historyRecord),
+            calendar: calendar,
+            referenceDate: now
+        )
+        #expect(afterWeekDelete.focusedDuration == 1800)
+        #expect(afterWeekDelete.sessionCount == 1)
+        #expect(afterWeekDelete.tasksFinished == 1)
+    }
+
+    @MainActor
+    @Test func gardenGrowthDropsBelowThresholdAfterDeletion() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Build Next", area: .creative, priority: .normal)
+        context.insert(goal)
+        // 120 minutes → young; removing 90 leaves 30 → sprout.
+        let long = FocusSession(
+            completedAt: now,
+            plannedDurationSeconds: 90 * 60,
+            focusedDurationSeconds: 90 * 60,
+            endedNaturally: true,
+            taskWasFinished: false,
+            goal: goal
+        )
+        let short = FocusSession(
+            completedAt: now.addingTimeInterval(-100),
+            plannedDurationSeconds: 30 * 60,
+            focusedDurationSeconds: 30 * 60,
+            endedNaturally: true,
+            taskWasFinished: false,
+            goal: goal
+        )
+        context.insert(long)
+        context.insert(short)
+        try context.save()
+        #expect(goal.totalFocusedDuration == 120 * 60)
+        #expect(goal.growthStage == .young)
+        #expect(goal.sessionCount == 2)
+
+        try PlanningStore.deleteFocusSession(long, context: context)
+
+        #expect(goal.totalFocusedDuration == 30 * 60)
+        #expect(goal.sessionCount == 1)
+        #expect(goal.growthStage == .sprout)
+        #expect(goal.plantVariant == .broadLeaf)
+    }
+
+    @MainActor
+    @Test func recommendationRecencyFallsBackAfterDeletingLatestSession() throws {
+        let engine = RecommendationEngine()
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        let other = Goal(title: "Portfolio", area: .career, priority: .high)
+        context.insert(goal)
+        context.insert(other)
+        let task = GoalTask(title: "Amino", durationMinutes: 30, energyRequired: .good, goal: goal)
+        let otherTask = GoalTask(title: "Page", durationMinutes: 30, energyRequired: .good, goal: other)
+        context.insert(task)
+        context.insert(otherTask)
+
+        let older = now.addingTimeInterval(-3 * 24 * 60 * 60)
+        let latest = now.addingTimeInterval(-20 * 60)
+        context.insert(
+            FocusSession(
+                completedAt: older,
+                plannedDurationSeconds: 1800,
+                focusedDurationSeconds: 1800,
+                endedNaturally: true,
+                taskWasFinished: false,
+                goal: goal,
+                task: task
+            )
+        )
+        let latestSession = FocusSession(
+            completedAt: latest,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: false,
+            goal: goal,
+            task: task
+        )
+        context.insert(latestSession)
+        try context.save()
+
+        #expect(goal.lastFocusedAt == latest)
+
+        try PlanningStore.deleteFocusSession(latestSession, context: context)
+        #expect(goal.lastFocusedAt == older)
+
+        let items = [task, otherTask].recommendationItems
+        #expect(items.first(where: { $0.title == "Amino" })?.lastFocusedAt == older)
+
+        // Delete remaining session → never-focused semantics for this goal.
+        let remaining = try context.fetch(FetchDescriptor<FocusSession>()).first { $0.goal?.id == goal.id }
+        if let remaining {
+            try PlanningStore.deleteFocusSession(remaining, context: context)
+        }
+        #expect(goal.lastFocusedAt == nil)
+        let neverFocused = [task, otherTask].recommendationItems
+        #expect(neverFocused.first(where: { $0.title == "Amino" })?.lastFocusedAt == nil)
+
+        let ranked = engine.rankedRecommendations(
+            tasks: neverFocused,
+            availableTime: .thirty,
+            energy: .good
+        )
+        #expect(ranked.map(\.task.title).contains("Amino"))
+    }
+
+    @MainActor
+    @Test func deleteSessionWithNullGoalAndTaskRelationships() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let orphan = FocusSession(
+            completedAt: now,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: false,
+            taskTitleSnapshot: "Orphan task",
+            goalTitleSnapshot: "Orphan goal",
+            goal: nil,
+            task: nil
+        )
+        context.insert(orphan)
+        let untouched = Goal(title: "Keep", area: .personal, priority: .normal)
+        context.insert(untouched)
+        try context.save()
+
+        try PlanningStore.deleteFocusSession(orphan, context: context)
+
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).first?.title == "Keep")
+    }
+
+    @MainActor
+    @Test func deletionPersistsAcrossContainerRelaunch() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-v3m2-delete-\(UUID().uuidString).store")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let keepID = UUID()
+        let removeID = UUID()
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: url)
+            let context = ModelContext(container)
+            let goal = Goal(title: "MCAT", area: .education, priority: .high)
+            context.insert(goal)
+            context.insert(
+                FocusSession(
+                    id: keepID,
+                    completedAt: now,
+                    plannedDurationSeconds: 1800,
+                    focusedDurationSeconds: 1800,
+                    endedNaturally: true,
+                    taskWasFinished: false,
+                    taskTitleSnapshot: "Keep",
+                    goalTitleSnapshot: "MCAT",
+                    goal: goal
+                )
+            )
+            let remove = FocusSession(
+                id: removeID,
+                completedAt: now.addingTimeInterval(-60),
+                plannedDurationSeconds: 600,
+                focusedDurationSeconds: 600,
+                endedNaturally: true,
+                taskWasFinished: false,
+                taskTitleSnapshot: "Remove",
+                goalTitleSnapshot: "MCAT",
+                goal: goal
+            )
+            context.insert(remove)
+            try context.save()
+            try PlanningStore.deleteFocusSession(remove, context: context)
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: url)
+        let context = ModelContext(reopened)
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.id == keepID)
+        #expect(sessions.contains(where: { $0.id == removeID }) == false)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+    }
+
+    @MainActor
+    @Test func hasFocusedTodayReflectsRemainingSessionsAfterDeletion() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let today = FocusSession(
+            completedAt: now,
+            plannedDurationSeconds: 1800,
+            focusedDurationSeconds: 1800,
+            endedNaturally: true,
+            taskWasFinished: false,
+            goal: goal
+        )
+        context.insert(today)
+        try context.save()
+        #expect(DailyReminderCoordinator.hasFocusedToday(context: context, now: now, calendar: calendar))
+
+        try PlanningStore.deleteFocusSession(today, context: context)
+        #expect(!DailyReminderCoordinator.hasFocusedToday(context: context, now: now, calendar: calendar))
+    }
+}
+
 

@@ -67,4 +67,10 @@ enum PlanningStore {
         context.delete(goal)
         try context.save()
     }
+
+    /// Removes a single FocusSession by stable identity. Does not delete Goal or GoalTask.
+    static func deleteFocusSession(_ session: FocusSession, context: ModelContext) throws {
+        context.delete(session)
+        try context.save()
+    }
 }
