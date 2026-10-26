@@ -12,6 +12,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
     case appearance
     case reminders
     case about
+    case dataManagement
 
     var id: Self { self }
 
@@ -21,6 +22,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .reminders: "Reminders"
         case .about: "About Next"
+        case .dataManagement: "Data Management"
         }
     }
 
@@ -30,6 +32,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
         case .appearance: "Light, dark, and system theme"
         case .reminders: "Daily reminder preferences"
         case .about: "App information and version"
+        case .dataManagement: "Manage your data and start fresh"
         }
     }
 
@@ -39,6 +42,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
         case .appearance: "circle.lefthalf.filled"
         case .reminders: "bell"
         case .about: "info.circle"
+        case .dataManagement: "externaldrive"
         }
     }
 
@@ -48,6 +52,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
         case .appearance: "settingsAppearanceLink"
         case .reminders: "settingsRemindersLink"
         case .about: "settingsAboutLink"
+        case .dataManagement: "settingsDataManagementLink"
         }
     }
 
@@ -57,6 +62,7 @@ enum SettingsDestination: String, Hashable, CaseIterable, Identifiable {
         case .appearance: "Opens appearance settings"
         case .reminders: "Opens reminder settings"
         case .about: "Opens app information"
+        case .dataManagement: "Opens data management and fresh start options"
         }
     }
 }

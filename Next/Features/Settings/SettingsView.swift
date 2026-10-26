@@ -49,6 +49,8 @@ struct SettingsView: View {
                 RemindersSettingsView()
             case .about:
                 AboutNextView()
+            case .dataManagement:
+                DataManagementView()
             }
         }
         .accessibilityIdentifier("settingsScreen")

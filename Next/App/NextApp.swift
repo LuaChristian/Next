@@ -65,6 +65,9 @@ struct NextApp: App {
             .preferredColorScheme(appearance.preferredColorScheme)
             .tint(NextTheme.interactiveAccent)
             .background(NextTheme.canvas.ignoresSafeArea())
+            .onReceive(NotificationCenter.default.publisher(for: .nextAppDataDidReset)) { _ in
+                hasCompletedOnboarding = false
+            }
         }
         .modelContainer(container)
     }

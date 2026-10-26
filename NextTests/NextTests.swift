@@ -3854,15 +3854,18 @@ struct FocusExperienceTests {
 
 struct SettingsNavigationTests {
     @Test func destinationsExposeStableHubMetadata() {
-        #expect(SettingsDestination.allCases.count == 4)
+        #expect(SettingsDestination.allCases.count == 5)
         #expect(SettingsDestination.history.accessibilityIdentifier == "settingsHistoryLink")
         #expect(SettingsDestination.appearance.accessibilityIdentifier == "settingsAppearanceLink")
         #expect(SettingsDestination.reminders.accessibilityIdentifier == "settingsRemindersLink")
         #expect(SettingsDestination.about.accessibilityIdentifier == "settingsAboutLink")
+        #expect(SettingsDestination.dataManagement.accessibilityIdentifier == "settingsDataManagementLink")
         #expect(SettingsDestination.history.subtitle == "Focus sessions and progress")
         #expect(SettingsDestination.appearance.subtitle == "Light, dark, and system theme")
         #expect(SettingsDestination.reminders.subtitle == "Daily reminder preferences")
         #expect(SettingsDestination.about.subtitle == "App information and version")
+        #expect(SettingsDestination.dataManagement.subtitle == "Manage your data and start fresh")
+        #expect(SettingsDestination.allCases.last == .dataManagement)
     }
 
     @Test func appVersionInfoReadsBundleMetadata() {
@@ -5836,6 +5839,511 @@ struct FocusSessionDeletionTests {
         try PlanningStore.deleteFocusSession(today, context: context)
         #expect(!DailyReminderCoordinator.hasFocusedToday(context: context, now: now, calendar: calendar))
     }
+}
+
+@MainActor
+struct AppDataResetTests {
+    private func makeDefaults() -> UserDefaults {
+        let name = "next.reset.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    private func plantPopulatedGarden(in context: ModelContext) throws -> Goal {
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high, botanicalSpecies: .fern)
+        context.insert(goal)
+        let task = GoalTask(
+            title: "Review amino acids",
+            durationMinutes: 25,
+            energyRequired: .good,
+            goal: goal
+        )
+        context.insert(task)
+        context.insert(
+            FocusSession(
+                plannedDurationSeconds: 25 * 60,
+                focusedDurationSeconds: 120 * 60,
+                endedNaturally: true,
+                taskWasFinished: true,
+                taskTitleSnapshot: "Review amino acids",
+                goalTitleSnapshot: "Study for MCAT",
+                goal: goal,
+                task: task
+            )
+        )
+        try context.save()
+        #expect(goal.growthStage == .young)
+        return goal
+    }
+
+    /// Post-reset emptiness must be checked on a fresh context — the caller's
+    /// context may retain invalidated registrations after scratch-context erase.
+    private func assertStoreEmpty(_ container: ModelContainer) throws {
+        let verify = ModelContext(container)
+        #expect(try verify.fetch(FetchDescriptor<Goal>()).isEmpty)
+        #expect(try verify.fetch(FetchDescriptor<GoalTask>()).isEmpty)
+        #expect(try verify.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+    }
+
+    private func makeCoordinator(
+        defaults: UserDefaults,
+        focusCancels: BindingCounter,
+        reminderDisables: BindingCounter,
+        recoveryClears: BindingCounter,
+        posts: BindingCounter,
+        save: ((ModelContext) throws -> Void)? = nil
+    ) -> AppDataResetCoordinator {
+        AppDataResetCoordinator(
+            services: AppDataResetServices(
+                cancelFocusNotifications: { focusCancels.value += 1 },
+                disableReminders: {
+                    reminderDisables.value += 1
+                    ReminderPreference.setEnabled(false, in: defaults)
+                },
+                clearRecovery: { suite in
+                    recoveryClears.value += 1
+                    FocusRecoveryStore.clear(in: suite)
+                },
+                saveContext: { context in
+                    if let save {
+                        try save(context)
+                    } else {
+                        try context.save()
+                    }
+                },
+                postDidReset: { posts.value += 1 }
+            )
+        )
+    }
+
+    @Test func emptyDatabaseResetSucceeds() throws {
+        let container = try NextPersistence.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        AppearancePreference.set(.dark, in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+
+        let focus = BindingCounter()
+        let reminders = BindingCounter()
+        let recovery = BindingCounter()
+        let posts = BindingCounter()
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: focus,
+            reminderDisables: reminders,
+            recoveryClears: recovery,
+            posts: posts
+        )
+
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+
+        try assertStoreEmpty(container)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+        #expect(defaults.object(forKey: OnboardingPreference.completedKey) == nil)
+        #expect(AppearancePreference.current(in: defaults) == .dark)
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(focus.value == 1)
+        #expect(reminders.value == 1)
+        #expect(recovery.value == 1)
+        #expect(posts.value == 1)
+    }
+
+    @Test func populatedDatabaseDeletesGoalsTasksSessionsAndGardenProgress() throws {
+        let container = try NextPersistence.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        _ = try plantPopulatedGarden(in: context)
+
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: BindingCounter(),
+            reminderDisables: BindingCounter(),
+            recoveryClears: BindingCounter(),
+            posts: BindingCounter()
+        )
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+
+        try assertStoreEmpty(container)
+        #expect(GardenGrowth.stage(for: 0) == .seedling)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+    }
+
+    @Test func historicalSessionsAreRemoved() throws {
+        let container = try NextPersistence.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        let goal = Goal(title: "Build Next", area: .career, priority: .normal)
+        context.insert(goal)
+        for _ in 0..<3 {
+            context.insert(
+                FocusSession(
+                    plannedDurationSeconds: 1800,
+                    focusedDurationSeconds: 1800,
+                    endedNaturally: true,
+                    taskWasFinished: false,
+                    goal: goal
+                )
+            )
+        }
+        try context.save()
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 3)
+
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: BindingCounter(),
+            reminderDisables: BindingCounter(),
+            recoveryClears: BindingCounter(),
+            posts: BindingCounter()
+        )
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+        try assertStoreEmpty(container)
+    }
+
+    @Test func appearanceIsPreservedAndOnboardingResets() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        AppearancePreference.set(.light, in: defaults)
+        OnboardingPreference.markCompleted(in: defaults)
+        ReminderPreference.setTime(hour: 7, minute: 30, in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+        PomodoroPreference.setConfiguration(
+            PomodoroConfiguration(focusMinutes: 50, breakMinutes: 10, rounds: 3),
+            in: defaults
+        )
+        FocusPreference.setKeepScreenAwake(true, in: defaults)
+
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: BindingCounter(),
+            reminderDisables: BindingCounter(),
+            recoveryClears: BindingCounter(),
+            posts: BindingCounter()
+        )
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+
+        #expect(AppearancePreference.current(in: defaults) == .light)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(ReminderPreference.hour(in: defaults) == 7)
+        #expect(ReminderPreference.minute(in: defaults) == 30)
+        #expect(PomodoroPreference.configuration(in: defaults).focusMinutes == 50)
+        #expect(FocusPreference.keepScreenAwake(in: defaults))
+    }
+
+    @Test func recoverySnapshotIsCleared() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(60))
+        let snap = FocusRecoverySnapshot(
+            version: FocusRecoverySnapshot.currentVersion,
+            experienceID: UUID(),
+            savedAt: start,
+            taskID: UUID(),
+            goalID: UUID(),
+            taskTitle: "Review amino acids",
+            goalTitle: "Study for MCAT",
+            taskDurationMinutes: 25,
+            energyRequiredRaw: EnergyLevel.good.rawValue,
+            area: "Education",
+            bankedFocusSeconds: 0,
+            mode: .simple,
+            simple: timer.snapshot,
+            pomodoro: nil,
+            awaitingCompletion: false,
+            completionPlannedSeconds: nil,
+            completionFocusedSeconds: nil,
+            completionEndedNaturally: nil
+        )
+        FocusRecoveryStore.save(snap, in: defaults)
+        #expect(FocusRecoveryStore.load(in: defaults) != nil)
+
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: BindingCounter(),
+            reminderDisables: BindingCounter(),
+            recoveryClears: BindingCounter(),
+            posts: BindingCounter()
+        )
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+        #expect(FocusRecoveryStore.load(in: defaults) == nil)
+    }
+
+    @Test func reminderDisableAndNotificationCancellationRun() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+
+        let focus = BindingCounter()
+        let reminders = BindingCounter()
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: focus,
+            reminderDisables: reminders,
+            recoveryClears: BindingCounter(),
+            posts: BindingCounter()
+        )
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+
+        #expect(focus.value == 1)
+        #expect(reminders.value == 1)
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+    }
+
+    @Test func repeatedResetIsPreventedWhileExecuting() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        let nestedAttempts = BindingCounter()
+
+        let box = CoordinatorBox()
+        box.coordinator = AppDataResetCoordinator(
+            services: AppDataResetServices(
+                cancelFocusNotifications: {},
+                disableReminders: { ReminderPreference.setEnabled(false, in: defaults) },
+                clearRecovery: { FocusRecoveryStore.clear(in: $0) },
+                saveContext: { ctx in
+                    nestedAttempts.value += 1
+                    #expect(throws: AppDataResetError.alreadyInProgress) {
+                        try box.coordinator.resetAllAppData(context: ctx, defaults: defaults)
+                    }
+                    try ctx.save()
+                },
+                postDidReset: {}
+            )
+        )
+        try box.coordinator.resetAllAppData(context: context, defaults: defaults)
+        #expect(nestedAttempts.value == 1)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+    }
+
+    @Test func failureDoesNotClearOnboardingOrReportSuccess() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-reset-fail-mem-\(UUID().uuidString).store")
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        AppearancePreference.set(.system, in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(60))
+        FocusRecoveryStore.save(
+            FocusRecoverySnapshot(
+                version: FocusRecoverySnapshot.currentVersion,
+                experienceID: UUID(),
+                savedAt: start,
+                taskID: UUID(),
+                goalID: UUID(),
+                taskTitle: "Review amino acids",
+                goalTitle: "Study for MCAT",
+                taskDurationMinutes: 25,
+                energyRequiredRaw: EnergyLevel.good.rawValue,
+                area: "Education",
+                bankedFocusSeconds: 0,
+                mode: .simple,
+                simple: timer.snapshot,
+                pomodoro: nil,
+                awaitingCompletion: false,
+                completionPlannedSeconds: nil,
+                completionFocusedSeconds: nil,
+                completionEndedNaturally: nil
+            ),
+            in: defaults
+        )
+
+        let focus = BindingCounter()
+        let reminders = BindingCounter()
+        let recovery = BindingCounter()
+        let posts = BindingCounter()
+        struct Boom: Error {}
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: focus,
+            reminderDisables: reminders,
+            recoveryClears: recovery,
+            posts: posts,
+            save: { _ in throw Boom() }
+        )
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            _ = try plantPopulatedGarden(in: context)
+            #expect(throws: AppDataResetError.persistenceFailed) {
+                try coordinator.resetAllAppData(context: context, defaults: defaults)
+            }
+        }
+
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+        #expect(posts.value == 0)
+        #expect(focus.value == 0)
+        #expect(reminders.value == 0)
+        #expect(recovery.value == 0)
+        #expect(ReminderPreference.isEnabled(in: defaults))
+        #expect(FocusRecoveryStore.load(in: defaults) != nil)
+        #expect(AppearancePreference.current(in: defaults) == .system)
+
+        // Store durability after releasing the tainted context (relaunch equivalent).
+        let durableContainer = try NextPersistence.makeContainer(storeURL: storeURL)
+        let durable = ModelContext(durableContainer)
+        #expect(try durable.fetch(FetchDescriptor<Goal>()).count == 1)
+        #expect(try durable.fetch(FetchDescriptor<GoalTask>()).count == 1)
+        #expect(try durable.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(try durable.fetch(FetchDescriptor<Goal>()).first?.title == "Study for MCAT")
+    }
+
+    @Test func failedSaveLeavesFileStoreIntactAcrossRelaunch() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-reset-fail-\(UUID().uuidString).store")
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        AppearancePreference.set(.dark, in: defaults)
+
+        struct Boom: Error {}
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            _ = try plantPopulatedGarden(in: context)
+            let coordinator = makeCoordinator(
+                defaults: defaults,
+                focusCancels: BindingCounter(),
+                reminderDisables: BindingCounter(),
+                recoveryClears: BindingCounter(),
+                posts: BindingCounter(),
+                save: { _ in throw Boom() }
+            )
+            #expect(throws: AppDataResetError.persistenceFailed) {
+                try coordinator.resetAllAppData(context: context, defaults: defaults)
+            }
+            #expect(OnboardingPreference.isCompleted(in: defaults))
+            let durable = ModelContext(container)
+            #expect(try durable.fetch(FetchDescriptor<Goal>()).count == 1)
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        let goals = try context.fetch(FetchDescriptor<Goal>())
+        #expect(goals.count == 1)
+        #expect(goals.first?.title == "Study for MCAT")
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+        #expect(AppearancePreference.current(in: defaults) == .dark)
+    }
+
+    @Test func retryOnSameContextAfterFailedSaveSucceeds() throws {
+        // Production retry: user taps Erase again on the same ModelContext after
+        // a failed attempt. Pending in-memory deletes from the failed transaction
+        // are committed by the successful retry without opening a second context.
+        let container = try NextPersistence.makeInMemoryContainer()
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+        _ = try plantPopulatedGarden(in: context)
+
+        struct Boom: Error {}
+        let failGate = BindingCounter()
+        failGate.value = 1
+        let posts = BindingCounter()
+        let coordinator = makeCoordinator(
+            defaults: defaults,
+            focusCancels: BindingCounter(),
+            reminderDisables: BindingCounter(),
+            recoveryClears: BindingCounter(),
+            posts: posts,
+            save: { ctx in
+                if failGate.value > 0 {
+                    failGate.value = 0
+                    throw Boom()
+                }
+                try ctx.save()
+            }
+        )
+
+        #expect(throws: AppDataResetError.persistenceFailed) {
+            try coordinator.resetAllAppData(context: context, defaults: defaults)
+        }
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+        #expect(ReminderPreference.isEnabled(in: defaults))
+        #expect(posts.value == 0)
+
+        try coordinator.resetAllAppData(context: context, defaults: defaults)
+        try assertStoreEmpty(container)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+        #expect(!ReminderPreference.isEnabled(in: defaults))
+        #expect(posts.value == 1)
+    }
+
+    @Test func cancelPathLeavesDataUntouchedWithoutCallingReset() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let defaults = makeDefaults()
+        OnboardingPreference.markCompleted(in: defaults)
+        AppearancePreference.set(.dark, in: defaults)
+        ReminderPreference.setEnabled(true, in: defaults)
+        _ = try plantPopulatedGarden(in: context)
+
+        // Cancel means never invoking the coordinator.
+        #expect(try context.fetch(FetchDescriptor<Goal>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(OnboardingPreference.isCompleted(in: defaults))
+        #expect(ReminderPreference.isEnabled(in: defaults))
+        #expect(AppearancePreference.current(in: defaults) == .dark)
+    }
+
+    @Test func relaunchPersistenceKeepsErasure() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-reset-\(UUID().uuidString).store")
+        let defaultsName = "next.reset.relaunch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsName) ?? .standard
+        defaults.removePersistentDomain(forName: defaultsName)
+        OnboardingPreference.markCompleted(in: defaults)
+        AppearancePreference.set(.light, in: defaults)
+
+        do {
+            let container = try NextPersistence.makeContainer(storeURL: storeURL)
+            let context = ModelContext(container)
+            _ = try plantPopulatedGarden(in: context)
+            let coordinator = makeCoordinator(
+                defaults: defaults,
+                focusCancels: BindingCounter(),
+                reminderDisables: BindingCounter(),
+                recoveryClears: BindingCounter(),
+                posts: BindingCounter()
+            )
+            try coordinator.resetAllAppData(context: context, defaults: defaults)
+        }
+
+        let reopened = try NextPersistence.makeContainer(storeURL: storeURL)
+        let context = ModelContext(reopened)
+        #expect(try context.fetch(FetchDescriptor<Goal>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<GoalTask>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).isEmpty)
+        #expect(!OnboardingPreference.isCompleted(in: defaults))
+        #expect(AppearancePreference.current(in: defaults) == .light)
+
+        let goalsExist = ((try? context.fetchCount(FetchDescriptor<Goal>())) ?? 0) > 0
+        #expect(!OnboardingPreference.resolveCompleted(goalsExist: goalsExist, defaults: defaults))
+    }
+}
+
+@MainActor
+final class BindingCounter {
+    var value = 0
+}
+
+@MainActor
+final class CoordinatorBox {
+    var coordinator: AppDataResetCoordinator!
 }
 
 

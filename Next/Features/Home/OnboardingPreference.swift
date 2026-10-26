@@ -71,6 +71,11 @@ enum OnboardingPreference {
         (defaults ?? store()).set(true, forKey: completedKey)
     }
 
+    /// Clears completion so the next launch (and in-session reset) returns to onboarding.
+    static func clearCompleted(in defaults: UserDefaults? = nil) {
+        (defaults ?? store()).removeObject(forKey: completedKey)
+    }
+
     static func isCompleted(in defaults: UserDefaults? = nil) -> Bool {
         (defaults ?? store()).bool(forKey: completedKey)
     }

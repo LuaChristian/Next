@@ -1432,6 +1432,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceLink"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersLink"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["settingsAboutLink"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsDataManagementLink"].exists)
         review.capture(app, "01 Settings navigation hub — light mode")
 
         // 02 — Appearance
@@ -1545,6 +1546,123 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(label.contains("Version"), "About should show version label, got: \(label)")
         app.navigationBars.buttons.firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+
+        openSettingsDestination("settingsDataManagementLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["dataManagementScreen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["A fresh start."].exists)
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testDataManagementCancelLeavesDataIntact() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_REMINDER", "on",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        app.launch()
+        openSettingsTab(in: app)
+        openSettingsDestination("settingsDataManagementLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["dataManagementScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["eraseAllAppDataButton"].waitForExistence(timeout: 2))
+        app.descendants(matching: .any)["eraseAllAppDataButton"].tap()
+        XCTAssertTrue(app.staticTexts["Erase all app data?"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["dataManagementScreen"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
+
+        app.navigationBars.buttons.firstMatch.tap()
+        tapTabBarButton("Garden", in: app)
+        XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testDataManagementSuccessfulResetReturnsToOnboarding() throws {
+        let suite = "next.uitest.reset.\(UUID().uuidString)"
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("next-reset-ui-\(UUID().uuidString).store")
+        let baseArgs = [
+            "UITEST_STORE_URL", storeURL.path,
+            "UITEST_DEFAULTS_SUITE", suite,
+            "UITEST_APPEARANCE", "dark"
+        ]
+
+        let app = XCUIApplication()
+        app.launchArguments = baseArgs + [
+            "UITEST_SEED_HISTORY",
+            "UITEST_ONBOARDING_COMPLETED",
+            "UITEST_REMINDER", "on",
+            "UITEST_REMINDER_AUTH", "authorized"
+        ]
+        app.launch()
+        openSettingsTab(in: app)
+        openSettingsDestination("settingsDataManagementLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["eraseAllAppDataButton"].waitForExistence(timeout: 3))
+        app.descendants(matching: .any)["eraseAllAppDataButton"].tap()
+        XCTAssertTrue(app.staticTexts["Erase all app data?"].waitForExistence(timeout: 2))
+        let confirm = app.descendants(matching: .any)["confirmEraseAllAppData"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 2))
+        confirm.tap()
+
+        XCTAssertTrue(app.staticTexts["Make your free time count."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["GET STARTED →"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Home"].exists)
+
+        app.terminate()
+        app.launchArguments = baseArgs
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Make your free time count."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.buttons["Garden"].exists)
+    }
+
+    @MainActor
+    func testDataManagementVisualReview() throws {
+        let review = DataManagementCapture(self)
+
+        var app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        openSettingsTab(in: app)
+        reveal(app.descendants(matching: .any)["settingsDataManagementLink"], in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsDataManagementLink"].waitForExistence(timeout: 3))
+        review.capture(app, "01 Settings with Data Management row")
+
+        openSettingsDestination("settingsDataManagementLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["dataManagementScreen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["A fresh start."].exists)
+        review.capture(app, "02 Data Management page — light")
+
+        app.descendants(matching: .any)["eraseAllAppDataButton"].tap()
+        XCTAssertTrue(app.staticTexts["Erase all app data?"].waitForExistence(timeout: 2))
+        review.capture(app, "03 Destructive confirmation")
+        app.buttons["Cancel"].tap()
+        app.terminate()
+
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "dark",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        openSettingsTab(in: app)
+        openSettingsDestination("settingsDataManagementLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["dataManagementScreen"].waitForExistence(timeout: 3))
+        review.capture(app, "04 Data Management page — dark")
+
+        app.descendants(matching: .any)["eraseAllAppDataButton"].tap()
+        let confirmErase = app.descendants(matching: .any)["confirmEraseAllAppData"]
+        XCTAssertTrue(confirmErase.waitForExistence(timeout: 2))
+        confirmErase.tap()
+        XCTAssertTrue(app.staticTexts["Make your free time count."].waitForExistence(timeout: 5))
+        review.capture(app, "05 Onboarding after successful reset")
     }
 
     @MainActor
@@ -3875,6 +3993,17 @@ private struct LivingGardenCapture {
 private struct SettingsNavigationCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M10-Settings-Navigation"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct DataManagementCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M12-Data-Management"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
