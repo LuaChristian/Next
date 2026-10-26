@@ -26,6 +26,14 @@ enum FocusRecoveryLaunch {
         now: Date = Date()
     ) {
         #if DEBUG
+        // UITest launches that do not opt into recovery must start clean.
+        // Otherwise a leftover UserDefaults snapshot full-screens Focus and
+        // blocks Settings / Home / Garden interactions for later tests.
+        if NextUITestLaunch.isActive, !arguments.contains(argument) {
+            FocusRecoveryStore.clear(arguments: arguments)
+            return
+        }
+
         guard let index = arguments.firstIndex(of: argument),
               arguments.indices.contains(index + 1),
               let fixture = Fixture(rawValue: arguments[index + 1])

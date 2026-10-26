@@ -143,7 +143,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
         app.launch()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
 
         app.buttons["+ PLANT A GOAL"].tap()
@@ -173,7 +173,7 @@ final class NextUITests: XCTestCase {
                 || app.descendants(matching: .any)["goalTask-Review amino acids"].exists
         )
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         app.buttons["WHAT'S NEXT?"].tap()
@@ -193,7 +193,7 @@ final class NextUITests: XCTestCase {
         app.buttons["I'M DONE"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
@@ -218,12 +218,12 @@ final class NextUITests: XCTestCase {
         app.launchArguments = storeArguments
         app.launch()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         app.buttons["WHAT'S NEXT?"].tap()
@@ -251,7 +251,7 @@ final class NextUITests: XCTestCase {
     }
 
     private func plantMCATGoalAndAminoTask(in app: XCUIApplication) {
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
 
         app.buttons["+ PLANT A GOAL"].tap()
@@ -309,7 +309,7 @@ final class NextUITests: XCTestCase {
         app.buttons["START USING NEXT →"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
     }
 
@@ -341,7 +341,7 @@ final class NextUITests: XCTestCase {
         app.buttons["START USING NEXT →"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Build Next"].exists)
     }
@@ -354,7 +354,7 @@ final class NextUITests: XCTestCase {
         app.buttons["Skip for now"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
     }
 
@@ -374,7 +374,7 @@ final class NextUITests: XCTestCase {
 
         completeEducationExamOnboarding(in: app)
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
 
         app.terminate()
@@ -383,7 +383,7 @@ final class NextUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
     }
 
@@ -411,7 +411,7 @@ final class NextUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
     }
 
@@ -429,7 +429,7 @@ final class NextUITests: XCTestCase {
         app.buttons["I'M DONE"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
 
         let row = app.descendants(matching: .any)["gardenGoal-Study for MCAT"]
         XCTAssertTrue(row.waitForExistence(timeout: 2))
@@ -501,7 +501,7 @@ final class NextUITests: XCTestCase {
         app.buttons["I'M DONE"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
 
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
@@ -519,7 +519,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_HISTORY"]
         app.launch()
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
 
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
@@ -551,7 +551,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = storeArguments + ["UITEST_SEED_HISTORY"]
         app.launch()
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
         app.terminate()
@@ -559,7 +559,7 @@ final class NextUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["STUDY FOR MCAT"].exists)
         XCTAssertFalse(app.staticTexts["Make your free time count."].exists)
@@ -581,7 +581,7 @@ final class NextUITests: XCTestCase {
         plantMCATGoalAndAminoTask(in: app)
         addTaskOnCurrentGoal(in: app, title: "Review flashcards", duration: "15 min", energy: "Low")
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         completeRecommendedSession(in: app, answer: "YES", exit: "WHAT'S NEXT? →")
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
@@ -591,7 +591,7 @@ final class NextUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["YOUR TASKS"].waitForExistence(timeout: 2))
@@ -600,7 +600,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["completedTask-Review amino acids"].exists)
         XCTAssertTrue(app.buttons["Reopen Review amino acids"].exists)
 
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["TASK FINISHED"].exists || app.staticTexts["1"].exists)
 
@@ -609,7 +609,7 @@ final class NextUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["COMPLETED"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.descendants(matching: .any)["completedTask-Review amino acids"].waitForExistence(timeout: 2))
@@ -618,13 +618,13 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         app.buttons["WHAT'S NEXT?"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["TASK FINISHED"].exists || app.staticTexts["1"].exists)
     }
@@ -644,7 +644,7 @@ final class NextUITests: XCTestCase {
         app.buttons["WHAT'S NEXT?"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
@@ -657,7 +657,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_TASK_LIFECYCLE"]
         app.launch()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["YOUR TASKS"].waitForExistence(timeout: 2))
@@ -675,7 +675,7 @@ final class NextUITests: XCTestCase {
         review.capture(app, "02 Goal Detail only completed")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
@@ -686,7 +686,7 @@ final class NextUITests: XCTestCase {
         review.capture(app, "04 Home recommendation after completion")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.buttons["Reopen Review amino acids"].waitForExistence(timeout: 2))
         app.buttons["Reopen Review amino acids"].tap()
@@ -798,7 +798,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Review organic chemistry"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["MCAT prep"].exists)
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         openGardenGoal("MCAT prep", in: app)
         tapGoalOptions(in: app)
         XCTAssertTrue(app.buttons["Edit Goal"].waitForExistence(timeout: 2))
@@ -832,7 +832,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["completedTask-Anki cards"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Reopen Anki cards"].exists)
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         app.buttons["WHAT'S NEXT?"].tap()
@@ -851,10 +851,10 @@ final class NextUITests: XCTestCase {
         app.buttons["Delete Task"].tap()
         XCTAssertFalse(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         app.staticTexts["Study for MCAT"].tap()
         tapGoalOptions(in: app)
         app.buttons["Delete Goal"].tap()
@@ -864,7 +864,7 @@ final class NextUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Study for MCAT"].exists)
         XCTAssertTrue(app.staticTexts["Portfolio"].exists)
 
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
     }
 
@@ -915,11 +915,11 @@ final class NextUITests: XCTestCase {
         openTaskMenu("Renamed amino", in: app)
         tapMenuButton("Delete Renamed amino", in: app)
         app.buttons["Delete Task"].tap()
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
         review.capture(app, "07 History after Task rename and delete")
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         app.staticTexts["Study for MCAT"].tap()
         tapGoalOptions(in: app)
@@ -933,7 +933,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Delete Goal?"].waitForExistence(timeout: 2))
         app.buttons["Delete Goal"].tap()
         XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 3))
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         assertHistoryRow(task: "Review amino acids", goal: "Study for MCAT", in: app)
         review.capture(app, "08 History after Goal rename and delete")
     }
@@ -1134,7 +1134,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "06 Garden with multiple goals")
 
@@ -1152,7 +1152,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "07 Garden in Dark mode")
         app.terminate()
@@ -1170,7 +1170,7 @@ final class NextUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
         }
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "10 Large Dynamic Type Garden")
     }
@@ -1185,7 +1185,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "09 Small-screen Garden")
     }
@@ -1202,7 +1202,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 3))
         app.buttons["+ PLANT A GOAL"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["botanicalSpeciesPicker"].waitForExistence(timeout: 3))
@@ -1225,7 +1225,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "03 Garden showing different species")
         review.capture(app, "05 Light-mode Garden")
@@ -1261,7 +1261,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "06 Dark-mode Garden")
         app.terminate()
@@ -1277,7 +1277,7 @@ final class NextUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
         }
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "08 Large Dynamic Type layout")
     }
@@ -1292,7 +1292,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "07 Small-screen layout")
     }
@@ -1310,7 +1310,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["+ PLANT A GOAL"].exists)
         review.capture(app, "01 Empty Garden")
@@ -1325,7 +1325,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 3))
         app.buttons["+ PLANT A GOAL"].tap()
         let titleField = app.textFields["Goal title"]
@@ -1349,7 +1349,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["5 goals growing"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.descendants(matching: .any)["gardenSummary"].exists)
@@ -1377,7 +1377,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
         review.capture(app, "08 Dark-mode Garden")
         app.terminate()
@@ -1393,7 +1393,7 @@ final class NextUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
         }
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["gardenGoal-Beginning study"].waitForExistence(timeout: 3))
         review.capture(app, "10 Large Dynamic Type Garden")
@@ -1409,7 +1409,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["YOUR GARDEN"].waitForExistence(timeout: 3))
         review.capture(app, "09 Small-screen Garden")
     }
@@ -1426,7 +1426,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["settingsHistoryLink"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceLink"].exists)
@@ -1470,7 +1470,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
         review.capture(app, "06 Settings navigation hub — dark mode")
 
@@ -1491,7 +1491,7 @@ final class NextUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
         }
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
         reveal(app.descendants(matching: .any)["settingsAboutLink"], in: app)
         review.capture(app, "08 Settings with large Dynamic Type")
@@ -1507,7 +1507,7 @@ final class NextUITests: XCTestCase {
             "UITEST_WRITE_REVIEW_SHOTS"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
         review.capture(app, "09 Settings on a smaller device")
     }
@@ -1522,7 +1522,7 @@ final class NextUITests: XCTestCase {
             "UITEST_REMINDER_AUTH", "authorized"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 3))
 
         openSettingsDestination("settingsAppearanceLink", in: app)
@@ -1552,7 +1552,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GROWTH", "UITEST_APPEARANCE", "light"]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["5 goals growing"].waitForExistence(timeout: 3))
 
         openGardenGoal("Young plant", in: app)
@@ -1820,7 +1820,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
         app.launch()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.buttons["+ PLANT A GOAL"].waitForExistence(timeout: 2))
         app.buttons["+ PLANT A GOAL"].tap()
 
@@ -1840,7 +1840,7 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         app.launch()
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
 
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
@@ -1885,7 +1885,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         review.capture(app, "07 Home")
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
         review.capture(app, "08 Garden after onboarding")
         app.staticTexts["Study for an exam"].tap()
@@ -1905,7 +1905,7 @@ final class NextUITests: XCTestCase {
         review.capture(app, "11 Goal Detail with task")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
@@ -1927,7 +1927,7 @@ final class NextUITests: XCTestCase {
         app.buttons["I'M DONE"].tap()
 
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for an exam"].waitForExistence(timeout: 2))
         review.capture(app, "17 Garden after first session")
         app.staticTexts["Study for an exam"].tap()
@@ -1936,7 +1936,7 @@ final class NextUITests: XCTestCase {
         review.capture(app, "18 Goal Detail after first session")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         review.capture(app, "19 History after first session")
@@ -1959,7 +1959,7 @@ final class NextUITests: XCTestCase {
         let history = XCUIApplication()
         history.launchArguments = ["UITEST_SEED_HISTORY"]
         history.launch()
-        history.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: history)
         XCTAssertTrue(history.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         review.capture(history, "22 History populated")
         history.swipeUp()
@@ -1969,10 +1969,10 @@ final class NextUITests: XCTestCase {
         let empty = XCUIApplication()
         empty.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
         empty.launch()
-        empty.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: empty)
         XCTAssertTrue(empty.staticTexts["NO FOCUS SESSIONS YET."].waitForExistence(timeout: 2))
         review.capture(empty, "24 Empty History")
-        empty.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: empty)
         XCTAssertTrue(empty.staticTexts["Every garden starts somewhere."].waitForExistence(timeout: 2))
         review.capture(empty, "25 Empty Garden")
         empty.terminate()
@@ -1984,13 +1984,13 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         largeType.launch()
-        largeType.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: largeType)
         XCTAssertTrue(largeType.staticTexts["HISTORY"].waitForExistence(timeout: 3))
         review.capture(largeType, "26 Large Dynamic Type History")
-        largeType.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: largeType)
         XCTAssertTrue(largeType.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         review.capture(largeType, "27 Large Dynamic Type Home")
-        largeType.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: largeType)
         XCTAssertTrue(largeType.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(largeType, "28 Large Dynamic Type Garden")
     }
@@ -2000,7 +2000,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED"]
         app.launch()
-        app.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: app)
 
         XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["THIS WEEK"].exists)
@@ -2051,7 +2051,7 @@ final class NextUITests: XCTestCase {
         )
         notYet.buttons["I'M DONE"].tap()
         XCTAssertTrue(notYet.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        notYet.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: notYet)
         let row = gardenRow("Study for MCAT", in: notYet)
         XCTAssertTrue(row.waitForExistence(timeout: 2))
         XCTAssertTrue(row.label.contains("1 session"))
@@ -2083,7 +2083,7 @@ final class NextUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
 
         let app = launchGardenEvolutionApp()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Study for MCAT"].waitForExistence(timeout: 2))
         XCTAssertEqual(gardenRow("Study for MCAT", in: app).value as? String, "Beginning")
         XCTAssertEqual(gardenRow("Build Next", in: app).value as? String, "Developing")
@@ -2129,7 +2129,7 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         largeType.launch()
-        largeType.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: largeType)
         XCTAssertTrue(largeType.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(largeType, "07 Garden at large Dynamic Type")
         reveal(gardenRow("Interview preparation", in: largeType), in: largeType)
@@ -2160,7 +2160,7 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 3))
 
         let titles = ["Study for MCAT", "Build Next", "Interview preparation", "Finish book"]
@@ -2206,26 +2206,24 @@ final class NextUITests: XCTestCase {
         first.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "system"]
         first.launch()
         XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        first.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: first)
         let systemOption = first.descendants(matching: .any)["appearance-system"]
         XCTAssertTrue(systemOption.waitForExistence(timeout: 2))
         XCTAssertEqual(systemOption.value as? String, "Selected")
         first.descendants(matching: .any)["appearance-dark"].tap()
         XCTAssertEqual(first.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
-        first.buttons["DONE"].tap()
-        XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
         first.terminate()
 
         let second = XCUIApplication()
         second.launchArguments = ["UITEST_SEED_GARDEN"]
         second.launch()
         XCTAssertTrue(second.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        second.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: second)
         let darkOption = second.descendants(matching: .any)["appearance-dark"]
         XCTAssertTrue(darkOption.waitForExistence(timeout: 2))
         XCTAssertEqual(darkOption.value as? String, "Selected")
         second.descendants(matching: .any)["appearance-system"].tap()
-        second.buttons["DONE"].tap()
+        second.terminate()
     }
 
     @MainActor
@@ -2235,11 +2233,11 @@ final class NextUITests: XCTestCase {
         light.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "light"]
         light.launch()
         XCTAssertTrue(light.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        light.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: light)
         let lightOption = light.descendants(matching: .any)["appearance-light"]
         XCTAssertTrue(lightOption.waitForExistence(timeout: 2))
         XCTAssertEqual(lightOption.value as? String, "Selected")
-        light.buttons["DONE"].tap()
+        leaveSettingsDetail(in: light)
         light.terminate()
 
         XCUIDevice.shared.appearance = .light
@@ -2247,11 +2245,11 @@ final class NextUITests: XCTestCase {
         dark.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "dark"]
         dark.launch()
         XCTAssertTrue(dark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        dark.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: dark)
         let darkOption = dark.descendants(matching: .any)["appearance-dark"]
         XCTAssertTrue(darkOption.waitForExistence(timeout: 2))
         XCTAssertEqual(darkOption.value as? String, "Selected")
-        dark.buttons["DONE"].tap()
+        leaveSettingsDetail(in: dark)
         dark.terminate()
 
         XCUIDevice.shared.appearance = .light
@@ -2271,10 +2269,11 @@ final class NextUITests: XCTestCase {
         let homeLight = launchSeeded("light")
         XCTAssertTrue(homeLight.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
         review.capture(homeLight, "01 Home — Light")
-        homeLight.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: homeLight)
         XCTAssertTrue(homeLight.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
         review.capture(homeLight, "15 Appearance setting — Light")
-        homeLight.buttons["DONE"].tap()
+        leaveSettingsDetail(in: homeLight)
+        tapTabBarButton("Home", in: homeLight)
         homeLight.buttons["30 min"].tap()
         homeLight.buttons["Good"].tap()
         homeLight.buttons["WHAT'S NEXT?"].tap()
@@ -2290,14 +2289,14 @@ final class NextUITests: XCTestCase {
         homeLight.terminate()
 
         let gardenLight = launchSeeded("light")
-        gardenLight.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: gardenLight)
         XCTAssertTrue(gardenLight.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(gardenLight, "09 Garden — Light")
         openGardenGoal("Study for MCAT", in: gardenLight)
         XCTAssertTrue(gardenLight.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
         review.capture(gardenLight, "11 Goal Detail — Light")
         gardenLight.navigationBars.buttons.element(boundBy: 0).tap()
-        gardenLight.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: gardenLight)
         XCTAssertTrue(gardenLight.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         review.capture(gardenLight, "13 History — Light")
         gardenLight.terminate()
@@ -2305,10 +2304,11 @@ final class NextUITests: XCTestCase {
         let homeDark = launchSeeded("dark")
         XCTAssertTrue(homeDark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
         review.capture(homeDark, "02 Home — Dark")
-        homeDark.buttons["appearanceButton"].tap()
+        openSettingsAppearance(in: homeDark)
         XCTAssertTrue(homeDark.descendants(matching: .any)["appearance-dark"].waitForExistence(timeout: 2))
         review.capture(homeDark, "16 Appearance setting — Dark")
-        homeDark.buttons["DONE"].tap()
+        leaveSettingsDetail(in: homeDark)
+        tapTabBarButton("Home", in: homeDark)
         homeDark.buttons["30 min"].tap()
         homeDark.buttons["Good"].tap()
         homeDark.buttons["WHAT'S NEXT?"].tap()
@@ -2324,7 +2324,7 @@ final class NextUITests: XCTestCase {
         homeDark.terminate()
 
         let gardenDark = launchSeeded("dark")
-        gardenDark.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: gardenDark)
         XCTAssertTrue(gardenDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(gardenDark, "10 Garden — Dark")
         openGardenGoal("Finish book", in: gardenDark)
@@ -2334,7 +2334,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(gardenDark.textFields["Task title"].waitForExistence(timeout: 2))
         review.capture(gardenDark, "17 Form — Dark")
         gardenDark.swipeDown()
-        gardenDark.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: gardenDark)
         XCTAssertTrue(gardenDark.staticTexts["HISTORY"].waitForExistence(timeout: 2))
         review.capture(gardenDark, "14 History — Dark")
         gardenDark.terminate()
@@ -2357,7 +2357,7 @@ final class NextUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityL"
         ])
-        largeDark.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: largeDark)
         XCTAssertTrue(largeDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(largeDark, "19 Garden large Dynamic Type — Dark")
         openGardenGoal("Study for MCAT", in: largeDark)
@@ -2389,7 +2389,7 @@ final class NextUITests: XCTestCase {
         let historyLight = XCUIApplication()
         historyLight.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "light"]
         historyLight.launch()
-        historyLight.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: historyLight)
         XCTAssertTrue(historyLight.staticTexts["HISTORY"].waitForExistence(timeout: 3))
         XCTAssertTrue(historyLight.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
         XCTAssertTrue(historyLight.staticTexts["Practice arrays"].exists)
@@ -2401,13 +2401,13 @@ final class NextUITests: XCTestCase {
         let historyDark = XCUIApplication()
         historyDark.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "dark"]
         historyDark.launch()
-        historyDark.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: historyDark)
         XCTAssertTrue(historyDark.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
         XCTAssertFalse(historyDark.staticTexts["Untitled"].exists)
         review.capture(historyDark, "23 History titles — Dark")
 
         // Snapshot survives task rename + delete
-        historyDark.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: historyDark)
         openGardenGoal("Build Next", in: historyDark)
         openVisibleTaskMenu("Sketch the garden", in: historyDark)
         tapMenuButton("Edit Sketch the garden", in: historyDark)
@@ -2420,7 +2420,7 @@ final class NextUITests: XCTestCase {
         if historyDark.buttons["Delete Task"].waitForExistence(timeout: 2) {
             historyDark.buttons["Delete Task"].tap()
         }
-        historyDark.tabBars.buttons["History"].tap()
+        openSettingsHistory(in: historyDark)
         XCTAssertTrue(historyDark.staticTexts["Sketch the garden"].waitForExistence(timeout: 2))
         XCTAssertFalse(historyDark.staticTexts["Renamed sketch"].exists)
         review.capture(historyDark, "24 History titles after rename and delete — Dark")
@@ -2436,7 +2436,7 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         large.launch()
-        large.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: large)
         XCTAssertTrue(large.staticTexts["GARDEN"].waitForExistence(timeout: 3))
         review.capture(large, "25 Garden large Dynamic Type — Dark")
         reveal(gardenRow("Interview preparation", in: large), in: large)
@@ -2463,7 +2463,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(home.buttons["WHAT'S NEXT?"].isEnabled)
         review.capture(home, "30 Home selections — Dark")
 
-        home.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: home)
         openGardenGoal("Study for MCAT", in: home)
         home.buttons["+ ADD TASK"].tap()
         XCTAssertTrue(home.textFields["Task title"].waitForExistence(timeout: 2))
@@ -2472,7 +2472,7 @@ final class NextUITests: XCTestCase {
         review.capture(home, "31 Add Task selections — Dark")
         home.swipeDown()
 
-        home.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: home)
         XCTAssertTrue(home.buttons["WHAT'S NEXT?"].waitForExistence(timeout: 2))
         if !home.buttons["WHAT'S NEXT?"].isEnabled {
             home.buttons["30 min"].tap()
@@ -2501,16 +2501,14 @@ final class NextUITests: XCTestCase {
         ]
         first.launch()
         XCTAssertTrue(first.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        first.buttons["appearanceButton"].tap()
-        XCTAssertTrue(first.descendants(matching: .any)["preferencesSheet"].waitForExistence(timeout: 2))
-        XCTAssertTrue(first.staticTexts["REMINDERS"].waitForExistence(timeout: 2))
+        openSettingsReminders(in: first)
         let toggle = first.switches["dailyReminderToggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 2))
         XCTAssertEqual(toggle.value as? String, "0")
         toggle.tap()
         XCTAssertEqual(first.switches["dailyReminderToggle"].value as? String, "1")
         XCTAssertTrue(first.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
-        first.buttons["DONE"].tap()
+        leaveSettingsDetail(in: first)
         first.terminate()
 
         let second = XCUIApplication()
@@ -2521,12 +2519,12 @@ final class NextUITests: XCTestCase {
         ]
         second.launch()
         XCTAssertTrue(second.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        second.buttons["appearanceButton"].tap()
+        openSettingsReminders(in: second)
         XCTAssertTrue(second.switches["dailyReminderToggle"].waitForExistence(timeout: 2))
         XCTAssertEqual(second.switches["dailyReminderToggle"].value as? String, "1")
         second.switches["dailyReminderToggle"].tap()
         XCTAssertEqual(second.switches["dailyReminderToggle"].value as? String, "0")
-        second.buttons["DONE"].tap()
+        leaveSettingsDetail(in: second)
     }
 
     @MainActor
@@ -2540,13 +2538,13 @@ final class NextUITests: XCTestCase {
         ]
         app.launch()
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        app.buttons["appearanceButton"].tap()
+        openSettingsReminders(in: app)
         XCTAssertTrue(app.switches["dailyReminderToggle"].waitForExistence(timeout: 2))
         app.switches["dailyReminderToggle"].tap()
         XCTAssertEqual(app.switches["dailyReminderToggle"].value as? String, "0")
         XCTAssertTrue(app.buttons["openNotificationSettings"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Notifications are turned off for Next in iOS Settings. Reminders cannot be delivered until you allow them."].exists)
-        app.buttons["DONE"].tap()
+        leaveSettingsDetail(in: app)
     }
 
     // MARK: - V2-M9 QA & Design Refinement
@@ -2564,7 +2562,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
         XCTAssertFalse(app.tabBars.buttons["History"].exists)
 
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceLink"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersLink"].exists)
@@ -2584,7 +2582,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GARDEN", "UITEST_APPEARANCE", "light"]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         openSettingsDestination("settingsAppearanceLink", in: app)
         XCTAssertTrue(app.descendants(matching: .any)["appearance-light"].waitForExistence(timeout: 2))
         XCTAssertEqual(app.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
@@ -2602,7 +2600,7 @@ final class NextUITests: XCTestCase {
         let relaunch = XCUIApplication()
         relaunch.launchArguments = ["UITEST_SEED_GARDEN"]
         relaunch.launch()
-        relaunch.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: relaunch)
         openSettingsDestination("settingsAppearanceLink", in: relaunch)
         XCTAssertEqual(relaunch.descendants(matching: .any)["appearance-dark"].value as? String, "Selected")
         relaunch.descendants(matching: .any)["appearance-system"].tap()
@@ -2619,7 +2617,7 @@ final class NextUITests: XCTestCase {
             "UITEST_REMINDER_AUTH", "authorized"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         openSettingsDestination("settingsRemindersLink", in: app)
         let toggle = app.switches["dailyReminderToggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 2))
@@ -2639,7 +2637,7 @@ final class NextUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityL"
         ]
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
         reveal(app.buttons["settingsHistoryLink"], in: app)
         XCTAssertTrue(app.buttons["settingsHistoryLink"].isHittable)
@@ -2674,13 +2672,13 @@ final class NextUITests: XCTestCase {
         homeDark.terminate()
 
         let settingsLight = launch("light")
-        settingsLight.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: settingsLight)
         XCTAssertTrue(settingsLight.staticTexts["SETTINGS"].waitForExistence(timeout: 2))
         review.capture(settingsLight, "03 Settings — Light")
         settingsLight.terminate()
 
         let settingsDark = launch("dark")
-        settingsDark.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: settingsDark)
         XCTAssertTrue(settingsDark.staticTexts["SETTINGS"].waitForExistence(timeout: 2))
         review.capture(settingsDark, "04 Settings — Dark")
 
@@ -2690,19 +2688,19 @@ final class NextUITests: XCTestCase {
         settingsDark.terminate()
 
         let gardenLight = launch("light")
-        gardenLight.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: gardenLight)
         XCTAssertTrue(gardenLight.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(gardenLight, "06 Garden — Light")
         gardenLight.terminate()
 
         let gardenDark = launch("dark")
-        gardenDark.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: gardenDark)
         XCTAssertTrue(gardenDark.staticTexts["GARDEN"].waitForExistence(timeout: 2))
         review.capture(gardenDark, "07 Garden — Dark")
         gardenDark.terminate()
 
         let switchApp = launch("light")
-        switchApp.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: switchApp)
         openSettingsDestination("settingsAppearanceLink", in: switchApp)
         XCTAssertEqual(switchApp.descendants(matching: .any)["appearance-light"].value as? String, "Selected")
         switchApp.descendants(matching: .any)["appearance-dark"].tap()
@@ -2714,7 +2712,7 @@ final class NextUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityL"
         ])
-        large.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: large)
         XCTAssertTrue(large.staticTexts["SETTINGS"].waitForExistence(timeout: 3))
         reveal(large.buttons["settingsHistoryLink"], in: large)
         review.capture(large, "09 Large Dynamic Type Settings")
@@ -2979,7 +2977,7 @@ final class NextUITests: XCTestCase {
     }
 
     private func openHistoryFromSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["Settings"].tap()
+        openSettingsTab(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 2))
         let link = app.buttons["settingsHistoryLink"]
         reveal(link, in: app)
@@ -3044,12 +3042,16 @@ final class NextUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(twinRows.count, 2)
         app.buttons["Cancel"].tap()
 
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Build Next"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["EDUCATION · CAREER · CREATIVE"].exists
-                      || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'EDUCATION' AND label CONTAINS 'CAREER'")).firstMatch.exists)
+        // V3-M9 Living Garden: area labels live on Goal Detail, not collection cells.
         let buildRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", "gardenGoal-Build Next"))
         XCTAssertEqual(buildRows.count, 1)
+        openGardenGoal("Build Next", in: app)
+        XCTAssertTrue(
+            app.staticTexts["EDUCATION · CAREER · CREATIVE"].waitForExistence(timeout: 2)
+                || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'EDUCATION' AND label CONTAINS 'CAREER'")).firstMatch.exists
+        )
     }
 
     @MainActor
@@ -3057,7 +3059,7 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED", "UITEST_APPEARANCE", "light"]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         app.buttons["+ PLANT A GOAL"].tap()
         let goalField = app.textFields["Goal title"]
         XCTAssertTrue(goalField.waitForExistence(timeout: 2))
@@ -3104,7 +3106,7 @@ final class NextUITests: XCTestCase {
 
         // 01 — Plant a Goal, multiple areas selected, Light
         let plant = launch("light")
-        plant.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: plant)
         plant.buttons["+ PLANT A GOAL"].tap()
         let plantField = plant.textFields["Goal title"]
         XCTAssertTrue(plantField.waitForExistence(timeout: 2))
@@ -3116,7 +3118,7 @@ final class NextUITests: XCTestCase {
 
         // 02 — Edit Goal, multiple areas, Dark
         let edit = launch("dark")
-        edit.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: edit)
         XCTAssertTrue(edit.staticTexts["Build Next"].waitForExistence(timeout: 2))
         edit.staticTexts["Build Next"].tap()
         tapGoalOptions(in: edit)
@@ -3133,7 +3135,7 @@ final class NextUITests: XCTestCase {
 
         // 04 — Garden with multi-area goal, Light
         let garden = launch("light")
-        garden.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: garden)
         XCTAssertTrue(garden.staticTexts["Build Next"].waitForExistence(timeout: 2))
         review.capture(garden, "04 Garden — multi-area goal Light")
         garden.terminate()
@@ -3186,7 +3188,7 @@ final class NextUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityL"
         ])
-        large.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: large)
         large.buttons["+ PLANT A GOAL"].tap()
         XCTAssertTrue(large.descendants(matching: .any)["lifeAreasField"].waitForExistence(timeout: 3))
         reveal(large.descendants(matching: .any)["lifeAreasField"], in: large)
@@ -3216,20 +3218,16 @@ final class NextUITests: XCTestCase {
         ]
         enabled.launch()
         XCTAssertTrue(enabled.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        enabled.buttons["appearanceButton"].tap()
-        XCTAssertTrue(enabled.descendants(matching: .any)["preferencesSheet"].waitForExistence(timeout: 2))
+        openSettingsReminders(in: enabled)
         XCTAssertEqual(enabled.switches["dailyReminderToggle"].value as? String, "1")
         XCTAssertTrue(enabled.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
-        let done = enabled.buttons["DONE"]
-        XCTAssertTrue(done.waitForExistence(timeout: 2))
-        XCTAssertTrue(done.isHittable)
-        // Assert clearance: DONE must sit above the home indicator, not flush to it.
-        let doneFrame = done.frame
+        // Reminder controls must clear the tab bar / home indicator.
+        let toggle = enabled.switches["dailyReminderToggle"]
         let appFrame = enabled.frame
         XCTAssertGreaterThan(
-            appFrame.maxY - doneFrame.maxY,
+            appFrame.maxY - toggle.frame.maxY,
             28,
-            "DONE should clear the bottom safe area / home indicator"
+            "Reminder controls should clear the bottom safe area / home indicator"
         )
         review.capture(enabled, "03 Reminder enabled with selected time")
         enabled.terminate()
@@ -3248,8 +3246,7 @@ final class NextUITests: XCTestCase {
         ]
         light.launch()
         XCTAssertTrue(light.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        light.buttons["appearanceButton"].tap()
-        revealReminders(in: light)
+        openSettingsReminders(in: light)
         review.capture(light, "01 Reminder settings — Light")
         light.terminate()
 
@@ -3262,8 +3259,7 @@ final class NextUITests: XCTestCase {
         ]
         dark.launch()
         XCTAssertTrue(dark.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        dark.buttons["appearanceButton"].tap()
-        revealReminders(in: dark)
+        openSettingsReminders(in: dark)
         review.capture(dark, "02 Reminder settings — Dark")
         dark.terminate()
 
@@ -3278,8 +3274,7 @@ final class NextUITests: XCTestCase {
         ]
         enabled.launch()
         XCTAssertTrue(enabled.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        enabled.buttons["appearanceButton"].tap()
-        revealReminders(in: enabled)
+        openSettingsReminders(in: enabled)
         XCTAssertEqual(enabled.switches["dailyReminderToggle"].value as? String, "1")
         XCTAssertTrue(enabled.descendants(matching: .any)["dailyReminderTime"].waitForExistence(timeout: 2))
         XCTAssertTrue(enabled.staticTexts["dailyReminderTimeSummary"].waitForExistence(timeout: 2))
@@ -3295,8 +3290,7 @@ final class NextUITests: XCTestCase {
         ]
         denied.launch()
         XCTAssertTrue(denied.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        denied.buttons["appearanceButton"].tap()
-        revealReminders(in: denied)
+        openSettingsReminders(in: denied)
         denied.switches["dailyReminderToggle"].tap()
         XCTAssertTrue(denied.buttons["openNotificationSettings"].waitForExistence(timeout: 2))
         reveal(denied.buttons["openNotificationSettings"], in: denied)
@@ -3316,21 +3310,19 @@ final class NextUITests: XCTestCase {
         ]
         large.launch()
         XCTAssertTrue(large.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
-        large.buttons["appearanceButton"].tap()
-        revealReminders(in: large)
+        openSettingsReminders(in: large)
         reveal(large.switches["dailyReminderToggle"], in: large)
         review.capture(large, "05 Large Dynamic Type reminder settings")
         large.terminate()
     }
 
     private func revealReminders(in app: XCUIApplication) {
-        let reminders = app.staticTexts["REMINDERS"]
-        XCTAssertTrue(reminders.waitForExistence(timeout: 2))
-        reveal(reminders, in: app)
-        let toggle = app.switches["dailyReminderToggle"]
-        if toggle.waitForExistence(timeout: 1) {
-            reveal(toggle, in: app)
+        if !app.descendants(matching: .any)["settingsRemindersScreen"].exists {
+            openSettingsReminders(in: app)
         }
+        let toggle = app.switches["dailyReminderToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 2))
+        reveal(toggle, in: app)
     }
 
     private func launchGardenEvolutionApp() -> XCUIApplication {
@@ -3370,19 +3362,87 @@ final class NextUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_SEED_GROWTH"]
         app.launch()
-        app.tabBars.buttons["Garden"].tap()
+        tapTabBarButton("Garden", in: app)
         XCTAssertTrue(app.staticTexts["Beginning study"].waitForExistence(timeout: 2))
         return app
     }
 
+    /// Prefer coordinate taps; fall back to labeled / indexed tab-bar buttons.
+    /// Simulator runs intermittently fail `scrollToVisible` on `.tap()`.
+    private func tapTabBarButton(_ label: String, in app: XCUIApplication) {
+        let button = app.tabBars.buttons[label]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "Tab missing: \(label)")
+        button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // If the first hit missed (safe-area drift), try a direct tap and index fallback.
+        let confirmed: Bool = {
+            switch label {
+            case "Settings":
+                return app.staticTexts["SETTINGS"].waitForExistence(timeout: 1)
+                    || app.descendants(matching: .any)["settingsScreen"].exists
+            case "Garden":
+                return app.staticTexts["GARDEN"].waitForExistence(timeout: 1)
+            case "Home":
+                return app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 1)
+                    || app.staticTexts["Good afternoon."].exists
+                    || app.staticTexts["Good morning."].exists
+                    || app.staticTexts["Good evening."].exists
+            default:
+                return true
+            }
+        }()
+        if !confirmed {
+            if button.isHittable {
+                button.tap()
+            } else {
+                let index: Int = ["Home": 0, "Garden": 1, "Settings": 2][label] ?? 0
+                let fallback = app.tabBars.buttons.element(boundBy: index)
+                fallback.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
+        }
+    }
+
+    private func tapHitPoint(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    private func openSettingsTab(in app: XCUIApplication) {
+        tapTabBarButton("Settings", in: app)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["settingsScreen"].waitForExistence(timeout: 5)
+                || app.staticTexts["SETTINGS"].waitForExistence(timeout: 2),
+            "Settings hub did not appear"
+        )
+    }
+
     private func openSettingsDestination(_ identifier: String, in app: XCUIApplication) {
+        if !app.descendants(matching: .any)["settingsScreen"].exists
+            && !app.staticTexts["SETTINGS"].exists {
+            openSettingsTab(in: app)
+        }
         let link = app.descendants(matching: .any)[identifier]
         reveal(link, in: app)
         XCTAssertTrue(link.waitForExistence(timeout: 3), "Missing Settings link \(identifier)")
-        if link.isHittable {
-            link.tap()
-        } else {
-            link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        tapHitPoint(link)
+    }
+
+    private func openSettingsAppearance(in app: XCUIApplication) {
+        openSettingsDestination("settingsAppearanceLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsAppearanceScreen"].waitForExistence(timeout: 3))
+    }
+
+    private func openSettingsReminders(in app: XCUIApplication) {
+        openSettingsDestination("settingsRemindersLink", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["settingsRemindersScreen"].waitForExistence(timeout: 3))
+    }
+
+    private func openSettingsHistory(in app: XCUIApplication) {
+        openSettingsDestination("settingsHistoryLink", in: app)
+        XCTAssertTrue(app.staticTexts["HISTORY"].waitForExistence(timeout: 3))
+    }
+
+    private func leaveSettingsDetail(in app: XCUIApplication) {
+        if app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 1) {
+            app.navigationBars.buttons.firstMatch.tap()
         }
     }
 
@@ -3471,7 +3531,7 @@ final class NextUITests: XCTestCase {
     }
 
     private func openHome(in app: XCUIApplication) {
-        app.tabBars.buttons["Home"].tap()
+        tapTabBarButton("Home", in: app)
         if app.buttons["START SESSION →"].waitForExistence(timeout: 1) {
             app.buttons["Back"].firstMatch.tap()
         }
@@ -3504,7 +3564,7 @@ final class NextUITests: XCTestCase {
 
     private func openGardenGoal(_ title: String, in app: XCUIApplication) {
         if !app.buttons["+ ADD TASK"].exists {
-            app.tabBars.buttons["Garden"].tap()
+            tapTabBarButton("Garden", in: app)
             XCTAssertTrue(app.staticTexts["GARDEN"].waitForExistence(timeout: 2))
             let row = gardenRow(title, in: app)
             reveal(row, in: app)

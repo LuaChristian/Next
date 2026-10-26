@@ -20,6 +20,10 @@ private enum FocusRunMode: Equatable {
     }
 }
 
+/// Focus UI and its default notification coordinator are MainActor-bound.
+/// Explicit isolation removes the Swift 6 warning on `FocusNotificationCoordinator.shared`
+/// as a default argument (evaluated in a nonisolated context otherwise).
+@MainActor
 struct FocusView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -44,10 +48,25 @@ struct FocusView: View {
     @State private var isSwitchingMode = false
     @State private var didClearRecovery = false
 
+    /// Convenience for production call sites. Resolves `.shared` in the
+    /// MainActor-isolated body (default-argument expressions stay nonisolated).
     init(
         task: TaskItem,
         bootstrap: FocusRecoveryBootstrap? = nil,
-        notifications: FocusNotificationCoordinator = .shared,
+        onDone: @escaping () -> Void = {}
+    ) {
+        self.init(
+            task: task,
+            bootstrap: bootstrap,
+            notifications: FocusNotificationCoordinator.shared,
+            onDone: onDone
+        )
+    }
+
+    init(
+        task: TaskItem,
+        bootstrap: FocusRecoveryBootstrap? = nil,
+        notifications: FocusNotificationCoordinator,
         onDone: @escaping () -> Void = {}
     ) {
         self.task = bootstrap?.task ?? task

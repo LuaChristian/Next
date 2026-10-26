@@ -2077,7 +2077,8 @@ struct OnboardingTests {
         #expect(goals.contains { $0.title == "Build strength" && $0.area == .fitness })
         #expect(goals.allSatisfy { $0.priority == .normal })
         #expect(goals.allSatisfy { $0.tasks.isEmpty })
-        #expect(Set(goals.map(\.plantVariant)).count == 2)
+        // V3-M8: onboarding defaults every goal to fern (cosmetic identity).
+        #expect(goals.allSatisfy { $0.botanicalSpecies == .fern })
         #expect(OnboardingPreference.isCompleted(in: defaults))
     }
 
@@ -4149,7 +4150,24 @@ struct PlantIdentityTests {
                 let second = PlantDrawing.signature(variant: variant, stage: stage)
                 #expect(first == second)
                 #expect(first == "\(variant.rawValue)-\(stage.rawValue)")
-                #expect(PlantArtwork.signature(variant: variant, stage: stage) == first)
+            }
+        }
+
+        // V3-M8: PlantArtwork.signature remaps legacy silhouette variants to fern.
+        for variant in PlantVariant.allCases {
+            for stage in GardenGrowthStage.allCases {
+                #expect(
+                    PlantArtwork.signature(variant: variant, stage: stage)
+                        == PlantArtwork.signature(species: .fern, stage: stage)
+                )
+            }
+        }
+
+        for species in BotanicalSpecies.allCases {
+            for stage in GardenGrowthStage.allCases {
+                let first = PlantArtwork.signature(species: species, stage: stage)
+                #expect(first == "\(species.rawValue)-\(stage.rawValue)")
+                #expect(PlantArtwork.signature(species: species, stage: stage) == first)
             }
         }
     }
