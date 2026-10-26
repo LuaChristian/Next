@@ -6346,4 +6346,93 @@ final class CoordinatorBox {
     var coordinator: AppDataResetCoordinator!
 }
 
+// MARK: - V4-M1 Dual Focus Entry
+
+struct FocusLaunchTests {
+    @MainActor
+    @Test func taskItemUsesEstimatedDurationAndRejectsCompleted() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let active = GoalTask(
+            title: "Review amino acids",
+            durationMinutes: 25,
+            energyRequired: .good,
+            goal: goal
+        )
+        let done = GoalTask(
+            title: "Review flashcards",
+            durationMinutes: 15,
+            energyRequired: .low,
+            isCompleted: true,
+            completedAt: Date(),
+            goal: goal
+        )
+        context.insert(active)
+        context.insert(done)
+        try context.save()
+
+        let item = FocusLaunch.taskItem(from: active)
+        #expect(item?.title == "Review amino acids")
+        #expect(item?.durationMinutes == 25)
+        #expect(item?.goal == "Study for MCAT")
+        #expect(FocusLaunch.taskItem(from: done) == nil)
+    }
+
+    @MainActor
+    @Test func selectableTasksIgnoreRecommendationFilters() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Improve programming", area: .career, priority: .normal)
+        context.insert(goal)
+        let longReady = GoalTask(
+            title: "Coding practice",
+            durationMinutes: 45,
+            energyRequired: .ready,
+            goal: goal
+        )
+        let completed = GoalTask(
+            title: "Done drill",
+            durationMinutes: 10,
+            energyRequired: .low,
+            isCompleted: true,
+            completedAt: Date(),
+            goal: goal
+        )
+        context.insert(longReady)
+        context.insert(completed)
+        try context.save()
+
+        let selectable = FocusLaunch.selectableTasks(on: goal)
+        #expect(selectable.map(\.title) == ["Coding practice"])
+        #expect(FocusLaunch.hasAnySelectableTasks(in: [goal]))
+
+        // Recommendation engine still filters by time/energy — direct path does not.
+        let engine = RecommendationEngine()
+        let recommended = engine.recommendations(
+            tasks: [longReady.asTaskItem],
+            availableTime: .fifteen,
+            energy: .low
+        )
+        #expect(recommended.isEmpty)
+    }
+
+    @MainActor
+    @Test func orphanTaskWithoutGoalCannotLaunch() throws {
+        let orphan = GoalTask(
+            title: "Orphan",
+            durationMinutes: 20,
+            energyRequired: .good
+        )
+        #expect(FocusLaunch.taskItem(from: orphan) == nil)
+    }
+
+    @Test func homeFocusEntryCopyIsBalanced() {
+        #expect(HomeFocusEntry.allCases.count == 2)
+        #expect(HomeFocusEntry.helpMeDecide.title == "Help me decide")
+        #expect(HomeFocusEntry.chooseTask.title == "Choose a task")
+        #expect(HomeFocusEntry.helpMeDecide.accessibilityIdentifier == "homeHelpMeDecide")
+        #expect(HomeFocusEntry.chooseTask.accessibilityIdentifier == "homeChooseATask")
+    }
+}
+
 

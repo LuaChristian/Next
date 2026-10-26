@@ -21,6 +21,8 @@ struct GoalDetailView: View {
     @State private var editingTaskID: UUID?
     @State private var confirmDeleteGoal = false
     @State private var taskPendingDeletion: GoalTask?
+    @State private var focusTask: TaskItem?
+    @State private var focusLaunchError: String?
 
     private var goal: Goal? {
         goals.first(where: { $0.id == goalID })
@@ -111,6 +113,23 @@ struct GoalDetailView: View {
             }
         } message: {
             Text("This removes the task from this Goal. Your focus history will be kept.")
+        }
+        .fullScreenCover(item: $focusTask) { task in
+            FocusView(task: task) {
+                focusTask = nil
+            }
+        }
+        // Goal Detail stays put after Focus — user remains in Garden context.
+        .alert(
+            "Couldn't start focus",
+            isPresented: Binding(
+                get: { focusLaunchError != nil },
+                set: { if !$0 { focusLaunchError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { focusLaunchError = nil }
+        } message: {
+            Text(focusLaunchError ?? "Please try another task.")
         }
     }
 
@@ -252,6 +271,16 @@ struct GoalDetailView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("goalTask-\(task.title)")
 
+                    Button("FOCUS") {
+                        startFocus(task)
+                    }
+                    .nextFont(13, weight: .semibold, relativeTo: .caption)
+                    .tracking(1.6)
+                    .foregroundStyle(NextTheme.interactiveAccent)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Focus on \(task.title)")
+                    .accessibilityIdentifier("goalTaskFocus-\(task.title)")
+
                     taskOverflowMenu(task)
                 }
                 .padding(.vertical, 20)
@@ -345,6 +374,14 @@ struct GoalDetailView: View {
         guard let goal else { return }
         try? PlanningStore.deleteGoal(goal, context: modelContext)
         dismiss()
+    }
+
+    private func startFocus(_ task: GoalTask) {
+        guard let item = FocusLaunch.taskItem(from: task) else {
+            focusLaunchError = "That task is no longer available."
+            return
+        }
+        focusTask = item
     }
 }
 

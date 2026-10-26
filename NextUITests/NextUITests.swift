@@ -17,6 +17,7 @@ final class NextUITests: XCTestCase {
     @MainActor
     func testRecommendationFlow() throws {
         let app = launchSeededApp()
+        openHelpMeDecide(in: app)
 
         let whatsNext = app.buttons["WHAT'S NEXT?"]
         XCTAssertFalse(whatsNext.isEnabled)
@@ -51,10 +52,11 @@ final class NextUITests: XCTestCase {
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["helpMeDecideScreen"].waitForExistence(timeout: 2)
+                      || app.staticTexts["HELP ME DECIDE"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["30 min"].isSelected)
         XCTAssertTrue(app.buttons["Good"].isSelected)
-        XCTAssertTrue(whatsNext.isEnabled)
+        XCTAssertTrue(app.buttons["WHAT'S NEXT?"].isEnabled)
     }
 
     @MainActor
@@ -95,9 +97,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.buttons["WHAT'S NEXT? →"].isEnabled)
         app.buttons["WHAT'S NEXT? →"].tap()
 
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["30 min"].isSelected)
-        XCTAssertTrue(app.buttons["Good"].isSelected)
+        assertReturnedToHomeEntry(in: app)
     }
 
     @MainActor
@@ -116,9 +116,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.buttons["I'M DONE"].isEnabled)
         app.buttons["I'M DONE"].tap()
 
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["30 min"].isSelected)
-        XCTAssertTrue(app.buttons["Good"].isSelected)
+        assertReturnedToHomeEntry(in: app)
     }
 
     @MainActor
@@ -173,10 +171,7 @@ final class NextUITests: XCTestCase {
                 || app.descendants(matching: .any)["goalTask-Review amino acids"].exists
         )
 
-        tapTabBarButton("Home", in: app)
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
 
         XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
@@ -223,10 +218,7 @@ final class NextUITests: XCTestCase {
         app.staticTexts["Study for MCAT"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
-        tapTabBarButton("Home", in: app)
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
 
         XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
@@ -584,8 +576,8 @@ final class NextUITests: XCTestCase {
         tapTabBarButton("Home", in: app)
         completeRecommendedSession(in: app, answer: "YES", exit: "WHAT'S NEXT? →")
 
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.buttons["WHAT'S NEXT?"].tap()
+        assertReturnedToHomeEntry(in: app)
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
@@ -618,10 +610,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["COMPLETED"].exists)
 
-        tapTabBarButton("Home", in: app)
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
         openSettingsHistory(in: app)
@@ -640,8 +629,8 @@ final class NextUITests: XCTestCase {
         app.buttons["NOT YET"].tap()
         app.buttons["I'M DONE"].tap()
 
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.buttons["WHAT'S NEXT?"].tap()
+        assertReturnedToHomeEntry(in: app)
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
 
         tapTabBarButton("Garden", in: app)
@@ -676,10 +665,7 @@ final class NextUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         tapTabBarButton("Home", in: app)
-        XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Review flashcards"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Review amino acids"].exists)
@@ -701,9 +687,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_RECOMMENDATION_ENGINE"]
         app.launch()
 
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
 
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["MCAT"].exists)
@@ -732,9 +716,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_RECOMMENDATION_ENGINE"]
         app.launch()
 
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
 
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["MCAT is a high-priority goal you haven't worked on recently."].exists)
@@ -809,8 +791,7 @@ final class NextUITests: XCTestCase {
         app.buttons["SAVE GOAL →"].tap()
         XCTAssertTrue(app.staticTexts["LOW PRIORITY"].waitForExistence(timeout: 2))
 
-        openHome(in: app)
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Review organic chemistry"].exists)
     }
@@ -832,10 +813,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["completedTask-Anki cards"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Reopen Anki cards"].exists)
 
-        tapTabBarButton("Home", in: app)
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
         XCTAssertFalse(app.staticTexts["Anki cards"].exists)
         XCTAssertTrue(app.staticTexts["Update project description"].waitForExistence(timeout: 2))
     }
@@ -2025,6 +2003,7 @@ final class NextUITests: XCTestCase {
 
         tapTabBarButton("Home", in: app)
         XCTAssertTrue(app.staticTexts["Good afternoon."].waitForExistence(timeout: 2))
+        openHelpMeDecide(in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         review.capture(app, "12 Home ready for What's Next")
@@ -2392,6 +2371,7 @@ final class NextUITests: XCTestCase {
         review.capture(homeLight, "15 Appearance setting — Light")
         leaveSettingsDetail(in: homeLight)
         tapTabBarButton("Home", in: homeLight)
+        openHelpMeDecide(in: homeLight)
         homeLight.buttons["30 min"].tap()
         homeLight.buttons["Good"].tap()
         homeLight.buttons["WHAT'S NEXT?"].tap()
@@ -2427,6 +2407,7 @@ final class NextUITests: XCTestCase {
         review.capture(homeDark, "16 Appearance setting — Dark")
         leaveSettingsDetail(in: homeDark)
         tapTabBarButton("Home", in: homeDark)
+        openHelpMeDecide(in: homeDark)
         homeDark.buttons["30 min"].tap()
         homeDark.buttons["Good"].tap()
         homeDark.buttons["WHAT'S NEXT?"].tap()
@@ -2576,6 +2557,7 @@ final class NextUITests: XCTestCase {
         home.launchArguments = ["UITEST_SEED_GARDEN_EVOLUTION", "UITEST_APPEARANCE", "dark"]
         home.launch()
         XCTAssertTrue(home.staticTexts["Good afternoon."].waitForExistence(timeout: 3))
+        openHelpMeDecide(in: home)
         home.buttons["30 min"].tap()
         home.buttons["Good"].tap()
         XCTAssertTrue(home.buttons["WHAT'S NEXT?"].isEnabled)
@@ -2591,7 +2573,7 @@ final class NextUITests: XCTestCase {
         home.swipeDown()
 
         tapTabBarButton("Home", in: home)
-        XCTAssertTrue(home.buttons["WHAT'S NEXT?"].waitForExistence(timeout: 2))
+        openHelpMeDecide(in: home)
         if !home.buttons["WHAT'S NEXT?"].isEnabled {
             home.buttons["30 min"].tap()
             home.buttons["Good"].tap()
@@ -2784,8 +2766,7 @@ final class NextUITests: XCTestCase {
 
         let homeDark = launch("dark")
         XCTAssertTrue(homeDark.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
-        homeDark.buttons["30 min"].tap()
-        homeDark.buttons["Good"].tap()
+        XCTAssertTrue(homeDark.descendants(matching: .any)["homeHelpMeDecide"].waitForExistence(timeout: 2))
         review.capture(homeDark, "02 Home — Dark")
         homeDark.terminate()
 
@@ -2846,6 +2827,11 @@ final class NextUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["homeHelpMeDecide"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeChooseATask"].exists)
+        XCTAssertTrue(app.staticTexts["What would you like to work on?"].exists)
+
+        openHelpMeDecide(in: app)
         XCTAssertTrue(app.staticTexts["01 / FOCUS"].exists)
         XCTAssertTrue(app.staticTexts["02 / TIME"].exists)
         XCTAssertTrue(app.staticTexts["03 / ENERGY"].exists)
@@ -2890,6 +2876,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(light.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
         review.capture(light, "01 Home — grouped sections Light")
 
+        openHelpMeDecide(in: light)
         light.buttons["30 min"].tap()
         light.buttons["Good"].tap()
         review.capture(light, "02 Home — Time and Energy selected Light")
@@ -2897,6 +2884,7 @@ final class NextUITests: XCTestCase {
 
         let dark = launch("dark")
         XCTAssertTrue(dark.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        openHelpMeDecide(in: dark)
         dark.segmentedControls.buttons["Life area"].tap()
         dark.descendants(matching: .any)["scopeAreaField"].tap()
         XCTAssertTrue(dark.descendants(matching: .any)["scopeAreaSheet"].waitForExistence(timeout: 2))
@@ -2907,6 +2895,7 @@ final class NextUITests: XCTestCase {
         dark.terminate()
 
         let goal = launch("light")
+        openHelpMeDecide(in: goal)
         goal.segmentedControls.buttons["Specific goal"].tap()
         goal.descendants(matching: .any)["scopeGoalField"].tap()
         XCTAssertTrue(goal.descendants(matching: .any)["scopeGoalSheet"].waitForExistence(timeout: 2))
@@ -2926,23 +2915,18 @@ final class NextUITests: XCTestCase {
         ])
         XCTAssertTrue(large.staticTexts["NEXT"].waitForExistence(timeout: 3))
         XCTAssertTrue(large.descendants(matching: .any)["homeGreeting"].exists)
-        XCTAssertTrue(large.staticTexts["01 / FOCUS"].exists)
+        XCTAssertTrue(large.staticTexts["What would you like to work on?"].exists)
         // Branding and greeting must clear the status-bar band at rest.
         let nextLabel = large.staticTexts["NEXT"]
         XCTAssertGreaterThan(nextLabel.frame.minY, 47, "NEXT should sit below the status bar at rest")
         XCTAssertGreaterThan(large.descendants(matching: .any)["homeGreeting"].frame.minY, nextLabel.frame.maxY)
         review.capture(large, "06 Home — Large Dynamic Type at top")
 
+        openHelpMeDecide(in: large)
         reveal(large.buttons["WHAT'S NEXT?"], in: large)
         XCTAssertTrue(large.buttons["WHAT'S NEXT?"].isHittable)
         XCTAssertTrue(large.staticTexts["03 / ENERGY"].exists)
         review.capture(large, "07 Home — Large Dynamic Type scrolled")
-
-        // Scroll back to top and confirm branding returns cleanly under the safe area.
-        for _ in 0..<8 { large.swipeDown() }
-        XCTAssertTrue(large.staticTexts["NEXT"].waitForExistence(timeout: 2))
-        XCTAssertTrue(large.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 2))
-        XCTAssertGreaterThan(large.staticTexts["NEXT"].frame.minY, 47)
         large.terminate()
     }
 
@@ -2952,6 +2936,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        openHelpMeDecide(in: app)
 
         let scope = app.descendants(matching: .any)["recommendationScopePicker"]
         XCTAssertTrue(scope.waitForExistence(timeout: 2))
@@ -2977,6 +2962,7 @@ final class NextUITests: XCTestCase {
         app.launchArguments = ["UITEST_SEED_MULTI_AREA", "UITEST_APPEARANCE", "light"]
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        openHelpMeDecide(in: app)
         XCTAssertTrue(app.staticTexts["01 / FOCUS"].exists)
         XCTAssertTrue(app.staticTexts["02 / TIME"].exists)
         XCTAssertTrue(app.staticTexts["03 / ENERGY"].exists)
@@ -3112,6 +3098,7 @@ final class NextUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        openHelpMeDecide(in: app)
         XCTAssertTrue(app.descendants(matching: .any)["recommendationScopePicker"].exists)
 
         // Anything remains available and deterministic.
@@ -3258,12 +3245,14 @@ final class NextUITests: XCTestCase {
         review.capture(garden, "04 Garden — multi-area goal Light")
         garden.terminate()
 
-        // 05 — Home, Anything
+        // 05 — Home dual entry (Anything scope lives behind Help me decide)
         let homeAnything = launch("light")
         XCTAssertTrue(homeAnything.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
         review.capture(homeAnything, "05 Home — Anything selected")
 
-        // 06 — Home, Life area selected
+        openHelpMeDecide(in: homeAnything)
+
+        // 06 — Help me decide, Life area selected
         homeAnything.segmentedControls.buttons["Life area"].tap()
         homeAnything.descendants(matching: .any)["scopeAreaField"].tap()
         XCTAssertTrue(homeAnything.descendants(matching: .any)["scopeAreaSheet"].waitForExistence(timeout: 2))
@@ -3282,7 +3271,7 @@ final class NextUITests: XCTestCase {
         XCTAssertTrue(firstGoal.waitForExistence(timeout: 2))
         firstGoal.tap()
 
-        // 08 — Home, Specific goal selected
+        // 08 — Help me decide, Specific goal selected
         XCTAssertTrue(homeAnything.descendants(matching: .any)["scopeGoalField"].waitForExistence(timeout: 2))
         review.capture(homeAnything, "08 Home — Specific goal selected")
 
@@ -3432,6 +3421,240 @@ final class NextUITests: XCTestCase {
         reveal(large.switches["dailyReminderToggle"], in: large)
         review.capture(large, "05 Large Dynamic Type reminder settings")
         large.terminate()
+    }
+
+    // MARK: - V4-M1 Dual Focus Entry Points
+
+    @MainActor
+    func testV4M1DualHomeEntryPointsVisibleAndNavigate() throws {
+        let app = launchSeededApp()
+        XCTAssertTrue(app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["What would you like to work on?"].exists)
+        XCTAssertTrue(app.staticTexts["A little progress is still progress."].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeHelpMeDecide"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["homeChooseATask"].exists)
+
+        openHelpMeDecide(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["helpMeDecideScreen"].waitForExistence(timeout: 2)
+                      || app.staticTexts["HELP ME DECIDE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["WHAT'S NEXT?"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openChooseATask(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["chooseTaskScreen"].waitForExistence(timeout: 2)
+                      || app.staticTexts["CHOOSE A TASK"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["chooseTaskGoal-Study for MCAT"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testV4M1HelpMeDecideOpensExistingRecommendationFlow() throws {
+        let app = launchSeededApp()
+        openHelpMeDecide(in: app)
+        app.buttons["30 min"].tap()
+        app.buttons["Good"].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(app.buttons["Not this one"].isEnabled)
+        app.buttons["START SESSION →"].tap()
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
+        XCTAssertTrue(timerIsNear(minutes: 25, in: app))
+    }
+
+    @MainActor
+    func testV4M1ChooseTaskDirectFocusIgnoresRecommendationFilters() throws {
+        let app = launchSeededApp()
+        // Prior guided selections that would exclude a Ready / 45-min task.
+        openHelpMeDecide(in: app)
+        app.buttons["15 min"].tap()
+        app.buttons["Low"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        openChooseATask(in: app)
+        let career = app.descendants(matching: .any)["chooseTaskGoal-Improve programming"]
+        reveal(career, in: app)
+        XCTAssertTrue(career.waitForExistence(timeout: 2))
+        career.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let coding = app.descendants(matching: .any)["chooseTaskItem-Coding practice"]
+        XCTAssertTrue(coding.waitForExistence(timeout: 2))
+        coding.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Coding practice"].exists)
+        XCTAssertTrue(timerIsNear(minutes: 45, in: app))
+        XCTAssertTrue(app.buttons["Enable Pomodoro"].exists)
+
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["YES"].tap()
+        app.buttons["WHAT'S NEXT? →"].tap()
+        assertReturnedToHomeEntry(in: app)
+
+        openSettingsHistory(in: app)
+        assertHistoryRow(task: "Coding practice", goal: "Improve programming", in: app)
+    }
+
+    @MainActor
+    func testV4M1ChooseTaskExcludesCompletedTasks() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_SEED_TASK_LIFECYCLE"]
+        app.launch()
+
+        openChooseATask(in: app)
+        let mcat = app.descendants(matching: .any)["chooseTaskGoal-Study for MCAT"]
+        XCTAssertTrue(mcat.waitForExistence(timeout: 2))
+        mcat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["chooseTaskItem-Review flashcards"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.descendants(matching: .any)["chooseTaskItem-Review amino acids"].exists)
+    }
+
+    @MainActor
+    func testV4M1GoalDetailDirectFocus() throws {
+        let app = launchSeededApp()
+        tapTabBarButton("Garden", in: app)
+        openGardenGoal("Study for MCAT", in: app)
+        XCTAssertTrue(app.buttons["Manage Review amino acids"].waitForExistence(timeout: 2))
+
+        let focus = app.descendants(matching: .any)["goalTaskFocus-Review amino acids"]
+        reveal(focus, in: app)
+        XCTAssertTrue(focus.waitForExistence(timeout: 2))
+        focus.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Review amino acids"].exists)
+        XCTAssertTrue(timerIsNear(minutes: 25, in: app))
+        app.buttons["Finish early"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        app.buttons["NOT YET"].tap()
+        app.buttons["I'M DONE"].tap()
+
+        // Goal Detail remains in Garden context.
+        XCTAssertTrue(app.staticTexts["YOUR TASKS"].waitForExistence(timeout: 3)
+                      || app.buttons["+ ADD TASK"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["goalTask-Review amino acids"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Manage Review amino acids"].exists)
+    }
+
+    @MainActor
+    func testV4M1EmptyStatesNoGoalsAndNoTasks() throws {
+        let empty = XCUIApplication()
+        empty.launchArguments = ["UITEST_IN_MEMORY", "UITEST_ONBOARDING_COMPLETED", "UITEST_APPEARANCE", "light"]
+        empty.launch()
+        openChooseATask(in: empty)
+        XCTAssertTrue(empty.descendants(matching: .any)["chooseTaskEmptyNoGoals"].waitForExistence(timeout: 2)
+                      || empty.staticTexts["Plant a goal first."].waitForExistence(timeout: 2))
+        XCTAssertTrue(empty.descendants(matching: .any)["chooseTaskPlantGoal"].exists
+                      || empty.buttons["+ PLANT A GOAL"].exists)
+        empty.terminate()
+
+        let lifecycle = XCUIApplication()
+        lifecycle.launchArguments = ["UITEST_SEED_TASK_LIFECYCLE"]
+        lifecycle.launch()
+        openChooseATask(in: lifecycle)
+        let finishBook = lifecycle.descendants(matching: .any)["chooseTaskGoal-Finish book"]
+        reveal(finishBook, in: lifecycle)
+        XCTAssertTrue(finishBook.waitForExistence(timeout: 2))
+        finishBook.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(
+            lifecycle.descendants(matching: .any)["chooseTaskGoalEmpty"].waitForExistence(timeout: 2)
+                || lifecycle.staticTexts["No tasks ready here."].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    func testV4M1VisualReview() throws {
+        let review = DualFocusEntryCapture(self)
+
+        func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "UITEST_SEED_GARDEN",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_WRITE_REVIEW_SHOTS"
+            ] + extra
+            app.launch()
+            return app
+        }
+
+        let homeLight = launch("light")
+        XCTAssertTrue(homeLight.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(homeLight, "01 — Home, light appearance")
+        homeLight.terminate()
+
+        let homeDark = launch("dark")
+        XCTAssertTrue(homeDark.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(homeDark, "02 — Home, dark appearance")
+        homeDark.terminate()
+
+        let large = launch("light", extra: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityL"
+        ])
+        XCTAssertTrue(large.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 3))
+        review.capture(large, "03 — Home, large Dynamic Type")
+        large.terminate()
+
+        let decide = launch("light")
+        openHelpMeDecide(in: decide)
+        review.capture(decide, "04 — Help me decide, initial screen")
+        decide.buttons["30 min"].tap()
+        decide.buttons["Good"].tap()
+        decide.buttons["WHAT'S NEXT?"].tap()
+        XCTAssertTrue(decide.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
+        review.capture(decide, "05 — Help me decide, recommendation")
+        decide.terminate()
+
+        let choose = launch("light")
+        openChooseATask(in: choose)
+        review.capture(choose, "06 — Choose a task, goal selection")
+        choose.descendants(matching: .any)["chooseTaskGoal-Study for MCAT"]
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(choose.descendants(matching: .any)["chooseTaskTasksScreen"].waitForExistence(timeout: 2)
+                      || choose.staticTexts["TASKS"].waitForExistence(timeout: 2))
+        review.capture(choose, "07 — Choose a task, task selection")
+        choose.descendants(matching: .any)["chooseTaskItem-Review amino acids"]
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(choose.buttons["Finish early"].waitForExistence(timeout: 3))
+        review.capture(choose, "08 — Direct Focus, selected task")
+        choose.buttons["Finish early"].tap()
+        XCTAssertTrue(choose.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        review.capture(choose, "10 — Direct Focus, completion")
+        choose.terminate()
+
+        let detail = launch("light")
+        tapTabBarButton("Garden", in: detail)
+        openGardenGoal("Study for MCAT", in: detail)
+        let focus = detail.descendants(matching: .any)["goalTaskFocus-Review amino acids"]
+        reveal(focus, in: detail)
+        XCTAssertTrue(focus.waitForExistence(timeout: 2))
+        review.capture(detail, "09 — Goal Detail, direct Focus action")
+        detail.terminate()
+
+        let noGoals = XCUIApplication()
+        noGoals.launchArguments = [
+            "UITEST_IN_MEMORY",
+            "UITEST_ONBOARDING_COMPLETED",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        noGoals.launch()
+        openChooseATask(in: noGoals)
+        XCTAssertTrue(noGoals.staticTexts["Plant a goal first."].waitForExistence(timeout: 2))
+        review.capture(noGoals, "11 — Empty state, no goals")
+        noGoals.terminate()
+
+        let noTasks = XCUIApplication()
+        noTasks.launchArguments = ["UITEST_SEED_TASK_LIFECYCLE", "UITEST_APPEARANCE", "light", "UITEST_WRITE_REVIEW_SHOTS"]
+        noTasks.launch()
+        openChooseATask(in: noTasks)
+        let finishBook = noTasks.descendants(matching: .any)["chooseTaskGoal-Finish book"]
+        reveal(finishBook, in: noTasks)
+        finishBook.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(noTasks.staticTexts["No tasks ready here."].waitForExistence(timeout: 2))
+        review.capture(noTasks, "12 — Empty state, no available tasks")
+        noTasks.terminate()
     }
 
     private func revealReminders(in app: XCUIApplication) {
@@ -3614,9 +3837,7 @@ final class NextUITests: XCTestCase {
         answer: String,
         exit: String
     ) {
-        app.buttons["30 min"].tap()
-        app.buttons["Good"].tap()
-        app.buttons["WHAT'S NEXT?"].tap()
+        askWhatsNext(in: app)
         XCTAssertTrue(app.staticTexts["YOUR NEXT MOVE"].waitForExistence(timeout: 2))
         app.buttons["START SESSION →"].tap()
         XCTAssertTrue(app.buttons["Finish early"].waitForExistence(timeout: 2))
@@ -3628,10 +3849,64 @@ final class NextUITests: XCTestCase {
 
     @MainActor
     private func navigateToFirstRecommendation(in app: XCUIApplication) {
+        openHelpMeDecide(in: app)
         app.buttons["30 min"].tap()
         app.buttons["Good"].tap()
         app.buttons["WHAT'S NEXT?"].tap()
         XCTAssertTrue(app.staticTexts["Review amino acids"].waitForExistence(timeout: 2))
+    }
+
+    private func openHelpMeDecide(in app: XCUIApplication) {
+        if !app.descendants(matching: .any)["homeHelpMeDecide"].exists {
+            tapTabBarButton("Home", in: app)
+        }
+        let entry = app.descendants(matching: .any)["homeHelpMeDecide"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3), "Help me decide entry missing")
+        entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["helpMeDecideScreen"].waitForExistence(timeout: 3)
+                || app.staticTexts["HELP ME DECIDE"].waitForExistence(timeout: 2),
+            "Help me decide screen did not open"
+        )
+    }
+
+    private func openChooseATask(in app: XCUIApplication) {
+        if !app.descendants(matching: .any)["homeChooseATask"].exists {
+            tapTabBarButton("Home", in: app)
+        }
+        let entry = app.descendants(matching: .any)["homeChooseATask"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3), "Choose a task entry missing")
+        entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["chooseTaskScreen"].waitForExistence(timeout: 3)
+                || app.staticTexts["CHOOSE A TASK"].waitForExistence(timeout: 2),
+            "Choose a task screen did not open"
+        )
+    }
+
+    private func assertReturnedToHomeEntry(in app: XCUIApplication) {
+        XCTAssertTrue(
+            app.staticTexts["Good afternoon."].waitForExistence(timeout: 3)
+                || app.descendants(matching: .any)["homeGreeting"].waitForExistence(timeout: 2)
+                || app.staticTexts["What would you like to work on?"].waitForExistence(timeout: 2),
+            "Expected Home dual-entry after Focus"
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["homeHelpMeDecide"].waitForExistence(timeout: 2)
+                || app.descendants(matching: .any)["homeChooseATask"].waitForExistence(timeout: 1),
+            "Expected both Home focus entry points"
+        )
+    }
+
+    private func askWhatsNext(
+        in app: XCUIApplication,
+        time: String = "30 min",
+        energy: String = "Good"
+    ) {
+        openHelpMeDecide(in: app)
+        app.buttons[time].tap()
+        app.buttons[energy].tap()
+        app.buttons["WHAT'S NEXT?"].tap()
     }
 
     private func timerIsNear(minutes: Int, in app: XCUIApplication) -> Bool {
@@ -3652,6 +3927,9 @@ final class NextUITests: XCTestCase {
         tapTabBarButton("Home", in: app)
         if app.buttons["START SESSION →"].waitForExistence(timeout: 1) {
             app.buttons["Back"].firstMatch.tap()
+        }
+        if app.descendants(matching: .any)["homeHelpMeDecide"].waitForExistence(timeout: 2) {
+            openHelpMeDecide(in: app)
         }
         XCTAssertTrue(app.buttons["WHAT'S NEXT?"].waitForExistence(timeout: 3))
     }
@@ -4004,6 +4282,17 @@ private struct SettingsNavigationCapture {
 private struct DataManagementCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V3-M12-Data-Management"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct DualFocusEntryCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V4-M1-Dual-Focus-Entry"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

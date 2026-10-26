@@ -92,6 +92,7 @@ struct RecommendationView: View {
             FocusView(task: task) {
                 focusTask = nil
                 dismiss()
+                NotificationCenter.default.post(name: .nextReturnToHomeEntry, object: nil)
             }
         }
     }
