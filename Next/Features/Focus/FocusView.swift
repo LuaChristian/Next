@@ -135,18 +135,18 @@ struct FocusView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             taskHeader
-                .padding(.top, 36)
+                .padding(.top, dynamicTypeSize.isAccessibilitySize ? 28 : 36)
 
-            Spacer(minLength: 24)
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 16 : 28)
 
             timerDisplay
                 .frame(maxWidth: .infinity)
 
             sessionStatus
-                .padding(.top, 18)
+                .padding(.top, 20)
                 .frame(maxWidth: .infinity)
 
-            Spacer(minLength: 24)
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 16 : 28)
 
             activeControls
         }
@@ -247,21 +247,66 @@ struct FocusView: View {
                 .tracking(1.8)
                 .foregroundStyle(NextTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Text(sessionContextLine)
+                .nextFont(12, weight: .medium, relativeTo: .caption)
+                .tracking(1.8)
+                .foregroundStyle(NextTheme.secondary)
+                .padding(.top, 4)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("focusSessionContext")
         }
         .accessibilityElement(children: .contain)
     }
 
+    /// Quiet mode + duration context under the goal — never competes with the timer.
+    private var sessionContextLine: String {
+        switch mode {
+        case .simple:
+            return "SIMPLE FOCUS · \(task.durationMinutes) MIN"
+        case .pomodoro:
+            return isPomodoroBreak ? "POMODORO · BREAK" : "POMODORO"
+        }
+    }
+
     private var timerDisplay: some View {
-        Text(remainingDisplay)
-            .font(.system(size: timerSize, weight: .regular, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(isPomodoroBreak ? NextTheme.secondary : NextTheme.ink)
-            .minimumScaleFactor(0.55)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel(isPomodoroBreak ? "Break time remaining" : "Time remaining")
-            .accessibilityValue(accessibilityRemaining)
-            .accessibilityIdentifier("focusTimer")
+        VStack(spacing: 12) {
+            Text(remainingDisplay)
+                .font(.system(size: timerSize, weight: .regular, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(timerForeground)
+                .opacity(mode.phase == .paused ? 0.72 : 1)
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: mode.phase)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isPomodoroBreak)
+                .accessibilityLabel(timerAccessibilityLabel)
+                .accessibilityValue(accessibilityRemaining)
+                .accessibilityIdentifier("focusTimer")
+
+            if mode.phase == .paused {
+                Text("PAUSED")
+                    .nextFont(12, weight: .medium, relativeTo: .caption)
+                    .tracking(2.2)
+                    .foregroundStyle(NextTheme.secondary)
+                    .accessibilityIdentifier("focusPausedLabel")
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: mode.phase)
+    }
+
+    private var timerForeground: Color {
+        if mode.phase == .paused { return NextTheme.secondary }
+        if isPomodoroBreak { return NextTheme.secondary }
+        return NextTheme.ink
+    }
+
+    private var timerAccessibilityLabel: String {
+        if isPomodoroBreak { return "Break time remaining" }
+        if mode.phase == .paused { return "Time remaining, paused" }
+        return "Time remaining"
     }
 
     private var isPomodoroBreak: Bool {
@@ -287,7 +332,7 @@ struct FocusView: View {
     private var sessionStatus: some View {
         switch mode {
         case .simple:
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 if showsAccumulatedFocus {
                     accumulatedFocusText
                 }
@@ -333,10 +378,10 @@ struct FocusView: View {
     }
 
     private func focusStatus(_ session: PomodoroSessionTimer) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Text("FOCUS")
-                .nextFont(12, weight: .medium, relativeTo: .caption)
-                .tracking(2.2)
+                .nextFont(13, weight: .semibold, relativeTo: .caption)
+                .tracking(2.4)
                 .foregroundStyle(NextTheme.botanical)
                 .accessibilityIdentifier("pomodoroPhase")
 
@@ -348,23 +393,24 @@ struct FocusView: View {
 
             if showsAccumulatedFocus {
                 accumulatedFocusText
+                    .padding(.top, 4)
             }
 
             Text(pomodoroPlannedLabel(session))
-                .nextFont(12, weight: .medium, relativeTo: .caption)
+                .nextFont(12, weight: .regular, relativeTo: .caption)
                 .tracking(1.4)
-                .foregroundStyle(NextTheme.secondary)
+                .foregroundStyle(NextTheme.secondary.opacity(0.85))
                 .accessibilityIdentifier("pomodoroPlanned")
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private func breakStatus(_ session: PomodoroSessionTimer) -> some View {
         VStack(spacing: 10) {
             Text("BREAK")
-                .nextFont(12, weight: .medium, relativeTo: .caption)
-                .tracking(2.2)
-                .foregroundStyle(NextTheme.botanical)
+                .nextFont(13, weight: .semibold, relativeTo: .caption)
+                .tracking(2.4)
+                .foregroundStyle(NextTheme.secondary)
                 .accessibilityIdentifier("pomodoroPhase")
 
             Text("AFTER ROUND \(session.currentRound) OF \(session.totalRounds)")
@@ -374,25 +420,27 @@ struct FocusView: View {
                 .accessibilityIdentifier("pomodoroRound")
 
             Text(session.breakReassurance)
-                .nextFont(16)
+                .nextFont(17)
                 .foregroundStyle(NextTheme.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
                 .accessibilityIdentifier("pomodoroBreakMessage")
 
             if let next = session.nextFocusRound {
                 Text("NEXT · ROUND \(next) OF \(session.totalRounds)")
                     .nextFont(12, weight: .medium, relativeTo: .caption)
                     .tracking(1.8)
-                    .foregroundStyle(NextTheme.ink)
+                    .foregroundStyle(NextTheme.secondary)
                     .accessibilityIdentifier("pomodoroNextRound")
             }
 
             if showsAccumulatedFocus {
                 accumulatedFocusText
+                    .padding(.top, 2)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private func pomodoroPlannedLabel(_ session: PomodoroSessionTimer) -> String {
@@ -401,7 +449,8 @@ struct FocusView: View {
     }
 
     private var timerSize: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 48 : 72
+        if dynamicTypeSize.isAccessibilitySize { return 52 }
+        return 76
     }
 
     private var remainingDisplay: String {
@@ -419,7 +468,11 @@ struct FocusView: View {
         }
         let minutes = total / 60
         let seconds = total % 60
-        return "\(minutes) minutes, \(seconds) seconds"
+        var spoken = "\(minutes) minutes, \(seconds) seconds"
+        if mode.phase == .paused {
+            spoken += ". Paused"
+        }
+        return spoken
     }
 
     private var pauseResumeTitle: String {
@@ -431,7 +484,7 @@ struct FocusView: View {
     }
 
     private var activeControls: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             NextHairline()
 
             Button(pauseResumeTitle) {
@@ -440,21 +493,28 @@ struct FocusView: View {
             .nextFont(13, weight: .semibold)
             .tracking(2.2)
             .foregroundStyle(NextTheme.botanical)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .disabled(isEndingSession || isSwitchingMode || result != nil)
             .accessibilityIdentifier("focusPauseResume")
+            .accessibilityHint(mode.phase == .paused ? "Continues the focus session" : "Pauses the focus session")
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: mode.phase)
 
             NextHairline()
+                .padding(.top, 4)
 
             Button(endSessionTitle) {
                 finishEarly()
             }
             .nextFont(16)
             .foregroundStyle(NextTheme.secondary)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .disabled(isEndingSession || isSwitchingMode || result != nil)
             .accessibilityIdentifier("focusEndSession")
+            .accessibilityHint(
+                isPomodoroBreak
+                    ? "Ends the Pomodoro session and moves to completion"
+                    : "Ends this focus session early and moves to completion"
+            )
         }
     }
 

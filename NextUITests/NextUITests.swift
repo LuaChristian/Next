@@ -3655,6 +3655,123 @@ final class NextUITests: XCTestCase {
         noTasks.terminate()
     }
 
+    // MARK: - V4-M3 Focus Session Experience
+
+    @MainActor
+    func testV4M3FocusSessionExperienceVisualReview() throws {
+        let review = FocusSessionExperienceCapture(self)
+
+        func launchFocus(
+            appearance: String,
+            preview: String? = nil,
+            extra: [String] = []
+        ) -> XCUIApplication {
+            var args = [
+                "UITEST_SEED_GARDEN",
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_WRITE_REVIEW_SHOTS"
+            ] + extra
+            if let preview {
+                args += ["UITEST_POMODORO_PREVIEW", preview]
+            }
+            let app = XCUIApplication()
+            app.launchArguments = args
+            app.launch()
+            navigateToFirstRecommendation(in: app)
+            app.buttons["START SESSION →"].tap()
+            XCTAssertTrue(app.descendants(matching: .any)["focusTimer"].waitForExistence(timeout: 3))
+            return app
+        }
+
+        // 01 — Simple Focus running
+        var app = launchFocus(appearance: "light")
+        XCTAssertTrue(app.staticTexts["SIMPLE FOCUS · 25 MIN"].waitForExistence(timeout: 2)
+                      || app.descendants(matching: .any)["focusSessionContext"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["PAUSE"].exists)
+        review.capture(app, "01 — Simple Focus running")
+
+        // 02 — Simple Focus paused
+        app.buttons["PAUSE"].tap()
+        XCTAssertTrue(app.buttons["RESUME"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["PAUSED"].waitForExistence(timeout: 2)
+                      || app.descendants(matching: .any)["focusPausedLabel"].waitForExistence(timeout: 2))
+        review.capture(app, "02 — Simple Focus paused")
+        app.terminate()
+
+        // 03 — Pomodoro focus
+        app = launchFocus(appearance: "light")
+        app.buttons["Enable Pomodoro"].tap()
+        XCTAssertTrue(app.buttons["BEGIN POMODORO"].waitForExistence(timeout: 3))
+        review.capture(app, "06 — Focus settings, mode selection")
+        app.buttons["BEGIN POMODORO"].tap()
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["pomodoroPhase"].label.uppercased(), "FOCUS")
+        review.capture(app, "03 — Pomodoro focus")
+        app.terminate()
+
+        // 04 — Pomodoro break
+        app = launchFocus(appearance: "light", preview: "break")
+        app.buttons["Enable Pomodoro"].tap()
+        app.buttons["BEGIN POMODORO"].tap()
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["pomodoroPhase"].label.uppercased(), "BREAK")
+        review.capture(app, "04 — Pomodoro break")
+        app.terminate()
+
+        // 05 — Pomodoro round progression
+        app = launchFocus(appearance: "light", preview: "focus2")
+        app.buttons["Enable Pomodoro"].tap()
+        app.buttons["BEGIN POMODORO"].tap()
+        XCTAssertTrue(app.staticTexts["pomodoroRound"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["pomodoroRound"].label.contains("2"))
+        review.capture(app, "05 — Pomodoro round progression")
+        app.terminate()
+
+        // 07 — Completion
+        app = launchFocus(appearance: "light")
+        app.buttons["focusEndSession"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 2))
+        review.capture(app, "07 — Completion")
+        app.terminate()
+
+        // 08 — Dark mode Focus
+        app = launchFocus(appearance: "dark")
+        XCTAssertTrue(app.buttons["PAUSE"].waitForExistence(timeout: 2))
+        review.capture(app, "08 — Dark mode Focus")
+        app.terminate()
+
+        // 09 — Large Dynamic Type via recovery fixture (avoids guided/choose navigation at XL).
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_FOCUS_RECOVERY", "simple",
+            "UITEST_WRITE_REVIEW_SHOTS",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityXL"
+        ]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["focusTimer"].waitForExistence(timeout: 5))
+        reveal(app.buttons["focusPauseResume"], in: app)
+        app.swipeDown()
+        XCTAssertTrue(app.descendants(matching: .any)["focusTimer"].waitForExistence(timeout: 2))
+        review.capture(app, "09 — Large Dynamic Type")
+        app.terminate()
+
+        // 10 — Dense chrome / small-screen stand-in (paused Pomodoro recovery).
+        app = XCUIApplication()
+        app.launchArguments = [
+            "UITEST_SEED_GARDEN",
+            "UITEST_APPEARANCE", "light",
+            "UITEST_FOCUS_RECOVERY", "pausedPomodoro",
+            "UITEST_WRITE_REVIEW_SHOTS"
+        ]
+        app.launch()
+        XCTAssertTrue(app.buttons["RESUME"].waitForExistence(timeout: 5))
+        review.capture(app, "10 — Small-screen behavior")
+        app.terminate()
+    }
+
     // MARK: - V4-M2 Guided Focus Flow
 
     @MainActor
@@ -4648,6 +4765,17 @@ private struct DualFocusEntryCapture {
 private struct GuidedFocusFlowCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V4-M2-Guided-Focus-Flow"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct FocusSessionExperienceCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V4-M3-Focus-Session-Experience"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }
