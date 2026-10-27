@@ -91,8 +91,12 @@ struct RecommendationView: View {
         .fullScreenCover(item: $focusTask) { task in
             FocusView(task: task) {
                 focusTask = nil
-                dismiss()
-                NotificationCenter.default.post(name: .nextReturnToHomeEntry, object: nil)
+                // Return to Home dual-entry via the shared notification.
+                // Defer so the cover can tear down before Home clears its destination
+                // (nested guided NavigationStack otherwise races).
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .nextReturnToHomeEntry, object: nil)
+                }
             }
         }
     }

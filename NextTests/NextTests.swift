@@ -6435,4 +6435,71 @@ struct FocusLaunchTests {
     }
 }
 
+// MARK: - V4-M2 Guided Focus Flow
+
+struct GuidedFocusFlowTests {
+    @Test func twentyFiveMinuteOptionIsExactCustom() {
+        #expect(TimeOption.twentyFive.minutes == 25)
+        #expect(TimeOption.twentyFive.isExactCustom)
+        #expect(TimeOption.standardPresets.contains(.twentyFive) == false)
+        #expect(TimeOption.standardPresets == [.fifteen, .thirty, .sixty, .ninetyPlus])
+    }
+
+    @Test func twentyFiveMinuteEligibilityUnchanged() {
+        let engine = RecommendationEngine()
+        let exact = TaskItem(
+            title: "Pomodoro block",
+            durationMinutes: 25,
+            energyRequired: .good,
+            area: "Education",
+            goal: "Study"
+        )
+        let tooLong = TaskItem(
+            title: "Deep work",
+            durationMinutes: 30,
+            energyRequired: .good,
+            area: "Education",
+            goal: "Study"
+        )
+        let fit = engine.recommendations(tasks: [exact, tooLong], availableTime: .twentyFive, energy: .good)
+        #expect(fit.map(\.id) == [exact.id])
+        #expect(engine.explanation(for: exact, availableTime: .twentyFive, energy: .good).lines.first
+                == "Fits your 25 minutes and Good energy.")
+    }
+
+    @Test func draftRequiresSecondarySelectionForScopedModes() {
+        let draft = GuidedFocusDraft()
+        #expect(draft.canLeaveScope)
+        draft.selectScopeMode(.lifeArea)
+        #expect(draft.canLeaveScope == false)
+        draft.scope.selectedArea = .career
+        #expect(draft.canLeaveScope)
+        draft.selectScopeMode(.specificGoal)
+        #expect(draft.canLeaveScope == false)
+        draft.scope.selectedGoalID = UUID()
+        #expect(draft.canLeaveScope)
+    }
+
+    @Test func changingScopeClearsDownstreamAnswers() {
+        let draft = GuidedFocusDraft()
+        draft.time = .thirty
+        draft.energy = .good
+        draft.selectScopeMode(.lifeArea)
+        #expect(draft.time == nil)
+        #expect(draft.energy == nil)
+    }
+
+    @Test func validatedInputRequiresTimeAndEnergy() {
+        let draft = GuidedFocusDraft()
+        #expect(draft.validatedInput(against: []) == nil)
+        draft.time = .twentyFive
+        #expect(draft.validatedInput(against: []) == nil)
+        draft.energy = .ready
+        let input = draft.validatedInput(against: [])
+        #expect(input?.time == .twentyFive)
+        #expect(input?.energy == .ready)
+        #expect(input?.scope.mode == .anything)
+    }
+}
+
 

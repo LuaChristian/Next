@@ -2,8 +2,9 @@
 //  HelpMeDecideView.swift
 //  Next
 //
-//  Guided entry: time, energy, and recommendation scope → RecommendationView.
-//  Ranking stays in RecommendationEngine; this view only collects inputs.
+//  Guided Help me decide: Scope → Time → Energy → Recommendation.
+//  Ranking stays in RecommendationEngine; this flow only collects inputs.
+//  Uses an explicit step model (no nested NavigationStack).
 //
 
 import SwiftData
@@ -12,239 +13,246 @@ import SwiftUI
 struct HelpMeDecideView: View {
     @Query(sort: \GoalTask.createdAt) private var persistedTasks: [GoalTask]
     @Query(sort: \Goal.createdAt) private var goals: [Goal]
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var selectedTime: TimeOption?
-    @State private var selectedEnergy: EnergyLevel?
-    @State private var recommendationScope = RecommendationScope.anything
-    @State private var recommendationInput: RecommendationInput?
+    @State private var draft = GuidedFocusDraft()
     @State private var showingAreaSheet = false
     @State private var showingGoalSheet = false
 
-    private var canProceed: Bool {
-        // Scope readiness is enforced as an empty recommendation state
-        // (CHOOSE A FOCUS), not by disabling WHAT'S NEXT?
-        selectedTime != nil && selectedEnergy != nil
-    }
-
-    private var stacksChoices: Bool {
-        dynamicTypeSize.isAccessibilitySize
-    }
-
     private var selectedGoalTitle: String? {
-        guard let id = recommendationScope.selectedGoalID else { return nil }
+        guard let id = draft.scope.selectedGoalID else { return nil }
         return goals.first(where: { $0.id == id })?.title
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("HELP ME DECIDE")
-                    .nextFont(13, weight: .medium, relativeTo: .caption)
-                    .tracking(3.2)
-                    .foregroundStyle(NextTheme.secondaryText)
-                    .accessibilityAddTraits(.isHeader)
-
-                Text("Tell me how much time and energy you have.")
-                    .nextFont(28, relativeTo: .title)
-                    .foregroundStyle(NextTheme.primaryText)
-                    .padding(.top, 28)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                focusSection
-                    .padding(.top, 28)
-
-                NextHairline()
-                    .padding(.top, 22)
-
-                timeSection
-                    .padding(.top, 22)
-
-                NextHairline()
-                    .padding(.top, 22)
-
-                energySection
-                    .padding(.top, 22)
-
-                NextPrimaryAction(title: "WHAT'S NEXT?", isEnabled: canProceed) {
-                    guard let time = selectedTime, let energy = selectedEnergy else { return }
-                    recommendationScope.validate(against: goals)
-                    recommendationInput = RecommendationInput(
-                        time: time,
-                        energy: energy,
-                        scope: recommendationScope
-                    )
-                }
-                .padding(.top, 28)
-                .accessibilityIdentifier("whatsNextButton")
-            }
-            .padding(.horizontal, NextTheme.pagePadding)
-            .padding(.top, 12)
-            .padding(.bottom, 28)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .background(NextTheme.canvas.ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .accessibilityIdentifier("helpMeDecideScreen")
-        .navigationDestination(item: $recommendationInput) { input in
-            let tasks = persistedTasks.recommendationItems(matching: input.scope)
-            let ranked = RecommendationEngine().rankedRecommendations(
-                tasks: tasks,
-                availableTime: input.time,
-                energy: input.energy
-            )
-            RecommendationView(
-                recommendations: ranked,
-                hasAnyTasks: !persistedTasks.isEmpty,
-                emptyKind: RecommendationEmptyKindResolver.resolve(
-                    scope: input.scope,
-                    scopedActiveTaskCount: tasks.count,
-                    rankedCount: ranked.count,
-                    hasAnyTasksInApp: !persistedTasks.isEmpty
-                )
-            )
-        }
-        .sheet(isPresented: $showingAreaSheet) {
-            SearchableAreaSelectSheet { area in
-                recommendationScope.selectedArea = area
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(NextTheme.canvas)
-        }
-        .sheet(isPresented: $showingGoalSheet) {
-            SearchableGoalSelectSheet(goals: goals) { goal in
-                recommendationScope.selectedGoalID = goal.id
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(NextTheme.canvas)
-        }
-        .onAppear {
-            recommendationScope.validate(against: goals)
-        }
-        .onChange(of: goals.map(\.id)) { _, _ in
-            recommendationScope.validate(against: goals)
-        }
-    }
-
-    private var focusSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("01 / FOCUS")
-
-            Text("What would you like to focus on?")
-                .nextFont(17)
-                .foregroundStyle(NextTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Picker("Focus scope", selection: Binding(
-                get: { recommendationScope.mode },
-                set: { recommendationScope.selectMode($0) }
-            )) {
-                ForEach(RecommendationScopeMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
+        stepContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(NextTheme.canvas.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            // Opaque bar keeps Back clear of scroll content and the status bar.
+            .toolbarBackground(NextTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back") { handleBack() }
+                        .accessibilityIdentifier(
+                            draft.step == .scope ? "guidedFlowDismiss" : "guidedStepBack"
+                        )
                 }
             }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Focus scope")
-            .accessibilityValue(recommendationScope.mode.title)
-            .accessibilityIdentifier("recommendationScopePicker")
-
-            switch recommendationScope.mode {
-            case .anything:
-                EmptyView()
-            case .lifeArea:
-                SearchableSingleSelectField(
-                    label: "LIFE AREA",
-                    placeholder: "Choose an area",
-                    displayValue: recommendationScope.selectedArea?.title,
-                    accessibilityIdentifier: "scopeAreaField"
-                ) {
-                    showingAreaSheet = true
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: draft.step)
+            .sheet(isPresented: $showingAreaSheet) {
+                SearchableAreaSelectSheet { area in
+                    draft.scope.selectedArea = area
                 }
-                .padding(.top, 4)
-            case .specificGoal:
-                SearchableSingleSelectField(
-                    label: "GOAL",
-                    placeholder: "Choose a goal",
-                    displayValue: selectedGoalTitle,
-                    accessibilityIdentifier: "scopeGoalField"
-                ) {
-                    showingGoalSheet = true
-                }
-                .padding(.top, 4)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(NextTheme.canvas)
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("homeFocusSection")
-    }
-
-    private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("02 / TIME")
-
-            Text("How much time do you have?")
-                .nextFont(17)
-                .foregroundStyle(NextTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            choiceStack {
-                ForEach(TimeOption.allCases) { option in
-                    SelectionOption(
-                        title: option.title,
-                        isSelected: selectedTime == option
-                    ) {
-                        selectedTime = option
-                    }
-                    .accessibilityLabel(option.title)
+            .sheet(isPresented: $showingGoalSheet) {
+                SearchableGoalSelectSheet(goals: goals) { goal in
+                    draft.scope.selectedGoalID = goal.id
                 }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(NextTheme.canvas)
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("homeTimeSection")
-    }
-
-    private var energySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("03 / ENERGY")
-
-            Text("How are you feeling?")
-                .nextFont(17)
-                .foregroundStyle(NextTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            choiceStack {
-                ForEach(EnergyLevel.allCases) { option in
-                    SelectionOption(
-                        title: option.title,
-                        isSelected: selectedEnergy == option
-                    ) {
-                        selectedEnergy = option
-                    }
-                    .accessibilityLabel(option.title)
-                }
+            .onAppear {
+                draft.scope.validate(against: goals)
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("homeEnergySection")
-    }
-
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .nextFont(13, weight: .medium, relativeTo: .caption)
-            .tracking(1.8)
-            .foregroundStyle(NextTheme.secondaryText)
-            .accessibilityAddTraits(.isHeader)
+            .onChange(of: goals.map(\.id)) { _, _ in
+                draft.scope.validate(against: goals)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .nextReturnToHomeEntry)) { _ in
+                draft.resetToScope()
+                dismiss()
+            }
     }
 
     @ViewBuilder
-    private func choiceStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        if stacksChoices {
-            VStack(spacing: 4) { content() }
+    private var stepContent: some View {
+        switch draft.step {
+        case .scope:
+            scopeStep
+                .accessibilityIdentifier("helpMeDecideScreen")
+                .transition(.opacity)
+        case .time:
+            GuidedTimeStepView(draft: draft)
+                .transition(.opacity)
+        case .energy:
+            GuidedEnergyStepView(draft: draft)
+                .transition(.opacity)
+        case .recommendation:
+            recommendationDestination
+                .transition(.opacity)
+        }
+    }
+
+    private var scopeStep: some View {
+        GuidedFocusStepChrome(
+            eyebrow: "HELP ME DECIDE",
+            progressStep: 1,
+            title: "What would you like to focus on?"
+        ) {
+            scopeChoices
+                .padding(.top, 4)
+
+            if draft.scope.mode == .lifeArea {
+                lifeAreaAccessory
+                    .padding(.top, 20)
+            }
+
+            if draft.scope.mode == .specificGoal {
+                specificGoalAccessory
+                    .padding(.top, 20)
+            }
+
+            if draft.canLeaveScope {
+                Button {
+                    draft.goToTime(validatingAgainst: goals)
+                } label: {
+                    Text("CONTINUE →")
+                        .nextFont(13, weight: .semibold)
+                        .tracking(2.2)
+                        .foregroundStyle(NextTheme.interactiveAccent)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 32)
+                .accessibilityIdentifier("guidedContinue")
+            }
+        }
+    }
+
+    private var scopeChoices: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(RecommendationScopeMode.allCases) { mode in
+                Button {
+                    draft.selectScopeMode(mode)
+                } label: {
+                    HStack(alignment: .center, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(mode.title)
+                                .nextFont(22, relativeTo: .title3)
+                                .foregroundStyle(
+                                    draft.scope.mode == mode
+                                        ? NextTheme.interactiveAccent
+                                        : NextTheme.primaryText
+                                )
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+
+                            Text(scopeSubtitle(mode))
+                                .nextFont(15)
+                                .foregroundStyle(NextTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if draft.scope.mode == mode {
+                            Image(systemName: "checkmark")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(NextTheme.interactiveAccent)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.vertical, 18)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(draft.scope.mode == mode ? [.isSelected, .isButton] : .isButton)
+                .accessibilityIdentifier("guidedScope-\(mode.rawValue)")
+
+                if mode != RecommendationScopeMode.allCases.last {
+                    NextHairline()
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("recommendationScopePicker")
+    }
+
+    private var lifeAreaAccessory: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SearchableSingleSelectField(
+                label: "LIFE AREA",
+                placeholder: "Choose an area",
+                displayValue: draft.scope.selectedArea?.title,
+                accessibilityIdentifier: "scopeAreaField"
+            ) {
+                showingAreaSheet = true
+            }
+
+            Text("Goals that include this life area stay eligible.")
+                .nextFont(15)
+                .foregroundStyle(NextTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var specificGoalAccessory: some View {
+        if goals.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("No goals planted yet.")
+                    .nextFont(17)
+                    .foregroundStyle(NextTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Plant a goal from the Garden, or choose Anything for now.")
+                    .nextFont(15)
+                    .foregroundStyle(NextTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityIdentifier("guidedScopeEmptyGoals")
         } else {
-            HStack(spacing: 8) { content() }
+            SearchableSingleSelectField(
+                label: "GOAL",
+                placeholder: "Choose a goal",
+                displayValue: selectedGoalTitle,
+                accessibilityIdentifier: "scopeGoalField"
+            ) {
+                showingGoalSheet = true
+            }
+        }
+    }
+
+    private var recommendationDestination: some View {
+        let input = draft.validatedInput(against: goals)
+        let scope = input?.scope ?? draft.scope
+        let time = input?.time ?? draft.time ?? .thirty
+        let energy = input?.energy ?? draft.energy ?? .good
+        let tasks = persistedTasks.recommendationItems(matching: scope)
+        let ranked = RecommendationEngine().rankedRecommendations(
+            tasks: tasks,
+            availableTime: time,
+            energy: energy
+        )
+        return RecommendationView(
+            recommendations: ranked,
+            hasAnyTasks: !persistedTasks.isEmpty,
+            emptyKind: RecommendationEmptyKindResolver.resolve(
+                scope: scope,
+                scopedActiveTaskCount: tasks.count,
+                rankedCount: ranked.count,
+                hasAnyTasksInApp: !persistedTasks.isEmpty
+            )
+        )
+        .accessibilityIdentifier("guidedRecommendationStep")
+    }
+
+    private func handleBack() {
+        if draft.goBack() { return }
+        dismiss()
+    }
+
+    private func scopeSubtitle(_ mode: RecommendationScopeMode) -> String {
+        switch mode {
+        case .anything: "Consider every open task."
+        case .lifeArea: "Stay within one part of life."
+        case .specificGoal: "Work on one goal only."
         }
     }
 }

@@ -11,6 +11,7 @@ extension TimeOption {
     var minutes: Int {
         switch self {
         case .fifteen: 15
+        case .twentyFive: 25
         case .thirty: 30
         case .sixty: 60
         case .ninetyPlus: 90

@@ -10,19 +10,31 @@ import SwiftUI
 
 enum TimeOption: CaseIterable, Identifiable {
     case fifteen
+    case twentyFive
     case thirty
     case sixty
     case ninetyPlus
 
     var id: Self { self }
 
+    /// Primary duration chips shown on the guided time step.
+    static var standardPresets: [TimeOption] {
+        [.fifteen, .thirty, .sixty, .ninetyPlus]
+    }
+
     var title: String {
         switch self {
         case .fifteen: "15 min"
+        case .twentyFive: "25 min"
         case .thirty: "30 min"
         case .sixty: "60 min"
         case .ninetyPlus: "90+ min"
         }
+    }
+
+    /// Exact custom duration offered beside the standard presets.
+    var isExactCustom: Bool {
+        self == .twentyFive
     }
 }
 
