@@ -57,28 +57,22 @@ struct FocusRecoverySnapshot: Equatable, Codable {
 }
 
 enum FocusRecoveryClockPolicy {
-    /// Maximum wall time we will advance a running session in one reconcile.
-    /// Longer absences still advance via segment catch-up, but absurd jumps are frozen.
-    static let maxForwardAdvance: TimeInterval = 7 * 24 * 60 * 60
+    /// Maximum age of a recovery snapshot before it is discarded as stale.
+    static let maxSnapshotAge: TimeInterval = 7 * 24 * 60 * 60
 
-    /// Resolve the evaluation clock for recovery.
-    /// - Clock moved backward (`now < savedAt`): freeze at `savedAt` (no invented focus, no rewind).
-    /// - Extreme forward jump: clamp advance to `maxForwardAdvance` from `savedAt`.
-    static func evaluationDate(now: Date, savedAt: Date) -> Date {
-        if now < savedAt {
-            return savedAt
-        }
-        let delta = now.timeIntervalSince(savedAt)
-        if delta > maxForwardAdvance {
-            return savedAt.addingTimeInterval(maxForwardAdvance)
-        }
-        return now
+    /// Cold-launch recovery never credits wall time that passed while the process was dead.
+    /// Running timers are frozen as paused at `savedAt`. In-process background/foreground
+    /// catch-up remains the responsibility of the live FocusView (timestamp-based refresh).
+    static func shouldFreezeRunningAsPaused(now: Date, savedAt: Date) -> Bool {
+        // Always freeze on cold-launch restore. `now` / `savedAt` retained for call-site clarity
+        // and clock-skew documentation; forward absence is intentionally not credited.
+        _ = (now, savedAt)
+        return true
     }
 
-    /// When the wall clock moved backward, keep a running timer from inventing remaining time
-    /// by freezing it as paused at the saved moment.
-    static func shouldFreezeRunningAsPaused(now: Date, savedAt: Date) -> Bool {
-        now < savedAt
+    /// Snapshots older than `maxSnapshotAge` are discarded rather than resumed.
+    static func isStale(now: Date, savedAt: Date) -> Bool {
+        now.timeIntervalSince(savedAt) > maxSnapshotAge || now < savedAt.addingTimeInterval(-maxSnapshotAge)
     }
 }
 
@@ -263,24 +257,34 @@ enum FocusRunModeRestore: Equatable {
     case pomodoro(PomodoroSessionTimer)
 }
 
+/// Display model for the calm cold-launch recovery prompt.
+struct FocusRecoveryPromptModel: Equatable, Identifiable {
+    var id: UUID { experienceID }
+
+    let experienceID: UUID
+    let taskTitle: String
+    let goalTitle: String
+    let modeLabel: String
+    let earnedFocusSeconds: TimeInterval
+    let wasInterruptedWhileRunning: Bool
+    /// Frozen bootstrap ready for Resume / End Session (never auto-running).
+    let bootstrap: FocusRecoveryBootstrap
+}
+
 enum FocusRecoveryReconciler {
-    /// Load, validate, and reconcile a snapshot against `now`.
+    /// Load, validate, and reconcile a snapshot for cold launch.
+    /// Running timers are frozen as paused at `savedAt` — death-gap wall time is never focus.
     static func restore(
         snapshot: FocusRecoverySnapshot,
         now: Date = Date()
     ) -> FocusRecoveryBootstrap? {
         guard let snapshot = FocusRecoveryStore.validate(snapshot) else { return nil }
+        if FocusRecoveryClockPolicy.isStale(now: now, savedAt: snapshot.savedAt) {
+            return nil
+        }
 
         let task = snapshot.makeTaskItem()
-        let evalAt: Date
         var working = snapshot
-
-        if FocusRecoveryClockPolicy.shouldFreezeRunningAsPaused(now: now, savedAt: snapshot.savedAt) {
-            working = freezeRunningAsPaused(snapshot)
-            evalAt = snapshot.savedAt
-        } else {
-            evalAt = FocusRecoveryClockPolicy.evaluationDate(now: now, savedAt: snapshot.savedAt)
-        }
 
         if working.awaitingCompletion {
             let planned = working.completionPlannedSeconds ?? 0
@@ -300,23 +304,15 @@ enum FocusRecoveryReconciler {
             )
         }
 
+        // Conservative policy: never evaluateCompletion across the termination gap.
+        if FocusRecoveryClockPolicy.shouldFreezeRunningAsPaused(now: now, savedAt: snapshot.savedAt) {
+            working = freezeRunningAsPaused(snapshot)
+        }
+
         switch working.mode {
         case .simple:
-            guard var timer = working.simple.map(FocusSessionTimer.init(restoring:)) else { return nil }
-            if timer.phase == .running {
-                timer.evaluateCompletion(at: evalAt)
-            }
-            if timer.phase == .ended {
-                let raw = timer.makeResult(for: task, at: evalAt)!
-                let merged = FocusSessionAccounting.mergeBankedFocus(working.bankedFocusSeconds, into: raw)
-                return FocusRecoveryBootstrap(
-                    experienceID: working.experienceID,
-                    task: task,
-                    bankedFocusSeconds: 0,
-                    mode: .simple(timer),
-                    result: merged
-                )
-            }
+            guard let timer = working.simple.map(FocusSessionTimer.init(restoring:)) else { return nil }
+            // Ended-while-paused should not occur; unfinished snapshots stay active/paused.
             return FocusRecoveryBootstrap(
                 experienceID: working.experienceID,
                 task: task,
@@ -326,22 +322,8 @@ enum FocusRecoveryReconciler {
             )
 
         case .pomodoro:
-            guard var session = working.pomodoro.map(PomodoroSessionTimer.init(restoring:)) else {
+            guard let session = working.pomodoro.map(PomodoroSessionTimer.init(restoring:)) else {
                 return nil
-            }
-            if session.phase == .running {
-                session.evaluateCompletion(at: evalAt)
-            }
-            if session.phase == .ended {
-                let raw = session.makeResult(for: task, at: evalAt)!
-                let merged = FocusSessionAccounting.mergeBankedFocus(working.bankedFocusSeconds, into: raw)
-                return FocusRecoveryBootstrap(
-                    experienceID: working.experienceID,
-                    task: task,
-                    bankedFocusSeconds: 0,
-                    mode: .pomodoro(session),
-                    result: merged
-                )
             }
             return FocusRecoveryBootstrap(
                 experienceID: working.experienceID,
@@ -350,6 +332,130 @@ enum FocusRecoveryReconciler {
                 mode: .pomodoro(session),
                 result: nil
             )
+        }
+    }
+
+    /// Build the calm recovery prompt. Returns nil for awaiting-completion (open Completion directly).
+    static func makePrompt(
+        snapshot: FocusRecoverySnapshot,
+        now: Date = Date()
+    ) -> FocusRecoveryPromptModel? {
+        guard let snapshot = FocusRecoveryStore.validate(snapshot) else { return nil }
+        if snapshot.awaitingCompletion { return nil }
+        guard let bootstrap = restore(snapshot: snapshot, now: now) else { return nil }
+
+        let wasRunning = isRunning(snapshot)
+        let earned = earnedFocusSeconds(from: bootstrap, at: snapshot.savedAt)
+
+        return FocusRecoveryPromptModel(
+            experienceID: bootstrap.experienceID,
+            taskTitle: bootstrap.task.title,
+            goalTitle: bootstrap.task.goal,
+            modeLabel: modeLabel(for: bootstrap),
+            earnedFocusSeconds: earned,
+            wasInterruptedWhileRunning: wasRunning,
+            bootstrap: bootstrap
+        )
+    }
+
+    /// Persist the frozen paused form of a running snapshot so a second kill during the
+    /// prompt cannot reintroduce a running phase.
+    static func persistFrozenSnapshotIfNeeded(
+        _ snapshot: FocusRecoverySnapshot,
+        now: Date = Date(),
+        in defaults: UserDefaults? = nil
+    ) {
+        guard FocusRecoveryStore.validate(snapshot) != nil else { return }
+        guard !snapshot.awaitingCompletion else { return }
+        guard isRunning(snapshot) else { return }
+        var frozen = freezeRunningAsPaused(snapshot)
+        frozen.savedAt = min(now, snapshot.savedAt)
+        FocusRecoveryStore.save(frozen, in: defaults)
+    }
+
+    /// User chose Resume — start the recovered (paused) timers at `now`.
+    static func resume(
+        _ bootstrap: FocusRecoveryBootstrap,
+        at now: Date = Date()
+    ) -> FocusRecoveryBootstrap {
+        var boot = bootstrap
+        switch boot.mode {
+        case .simple(var timer):
+            if timer.phase == .paused {
+                timer.resume(at: now)
+            }
+            boot.mode = .simple(timer)
+        case .pomodoro(var session):
+            if session.phase == .paused {
+                session.resume(at: now)
+            }
+            boot.mode = .pomodoro(session)
+        }
+        return boot
+    }
+
+    /// User chose End Session — finish without crediting death-gap time (paused finish).
+    static func endSession(
+        _ bootstrap: FocusRecoveryBootstrap,
+        at now: Date = Date()
+    ) -> FocusRecoveryBootstrap {
+        var boot = bootstrap
+        let task = boot.task
+        switch boot.mode {
+        case .simple(var timer):
+            if timer.phase != .ended {
+                timer.finish(at: now)
+            }
+            if let raw = timer.makeResult(for: task, at: now) {
+                boot.result = FocusSessionAccounting.mergeBankedFocus(boot.bankedFocusSeconds, into: raw)
+                boot.bankedFocusSeconds = 0
+            }
+            boot.mode = .simple(timer)
+        case .pomodoro(var session):
+            if session.phase != .ended {
+                session.finish(at: now)
+            }
+            if let raw = session.makeResult(for: task, at: now) {
+                boot.result = FocusSessionAccounting.mergeBankedFocus(boot.bankedFocusSeconds, into: raw)
+                boot.bankedFocusSeconds = 0
+            }
+            boot.mode = .pomodoro(session)
+        }
+        return boot
+    }
+
+    static func earnedFocusSeconds(from bootstrap: FocusRecoveryBootstrap, at now: Date) -> TimeInterval {
+        let current: TimeInterval
+        switch bootstrap.mode {
+        case .simple(let timer):
+            current = timer.phase == .ended ? 0 : timer.activeElapsed(at: now)
+        case .pomodoro(let session):
+            current = session.phase == .ended ? 0 : session.focusedElapsed(at: now)
+        }
+        return FocusSessionAccounting.displayedAccumulatedFocus(
+            banked: bootstrap.bankedFocusSeconds,
+            currentFocused: current
+        )
+    }
+
+    static func modeLabel(for bootstrap: FocusRecoveryBootstrap) -> String {
+        switch bootstrap.mode {
+        case .simple:
+            return "Simple Focus"
+        case .pomodoro(let session):
+            if session.isOnBreak {
+                return "Pomodoro · Break"
+            }
+            return "Pomodoro · Focus"
+        }
+    }
+
+    private static func isRunning(_ snapshot: FocusRecoverySnapshot) -> Bool {
+        switch snapshot.mode {
+        case .simple:
+            return snapshot.simple?.phase == .running
+        case .pomodoro:
+            return snapshot.pomodoro?.phase == .running
         }
     }
 

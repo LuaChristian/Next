@@ -1088,17 +1088,19 @@ struct FocusRecoveryTests {
         )
     }
 
-    @Test func runningSimpleFocusRecoversRemainingTime() {
+    @Test func runningSimpleFocusFreezesPausedWithoutDeathGapCredit() {
         var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
         timer.evaluateCompletion(at: start.addingTimeInterval(300))
-        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: start.addingTimeInterval(300))
+        let savedAt = start.addingTimeInterval(300)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: savedAt)
         let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(480))
         guard case .simple(let restored) = boot?.mode else {
             Issue.record("Expected simple mode")
             return
         }
-        #expect(restored.phase == .running)
-        #expect(restored.remainingSeconds(at: start.addingTimeInterval(480)) == 17 * 60)
+        #expect(restored.phase == .paused)
+        #expect(restored.remainingSeconds(at: savedAt) == 20 * 60)
+        #expect(restored.activeElapsed(at: start.addingTimeInterval(480)) == 300)
         #expect(boot?.result == nil)
     }
 
@@ -1116,86 +1118,101 @@ struct FocusRecoveryTests {
         #expect(boot?.bankedFocusSeconds == 90)
     }
 
-    @Test func runningPomodoroRecoversFocusSegment() {
+    @Test func runningPomodoroFocusFreezesPausedAtSavedMoment() {
         var session = PomodoroSessionTimer(configuration: .recommended, startedAt: start)
+        session.evaluateCompletion(at: start.addingTimeInterval(120))
+        let savedAt = start.addingTimeInterval(120)
         let snap = baseSnapshot(
             mode: .pomodoro,
             pomodoro: session.snapshot,
             banked: 60,
-            savedAt: start
+            savedAt: savedAt
         )
-        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(120))
+        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(600))
         guard case .pomodoro(let restored) = boot?.mode else {
             Issue.record("Expected pomodoro")
             return
         }
+        #expect(restored.phase == .paused)
         #expect(!restored.isOnBreak)
         #expect(restored.currentRound == 1)
-        #expect(restored.remainingSeconds(at: start.addingTimeInterval(120)) == 23 * 60)
+        #expect(restored.remainingSeconds(at: savedAt) == 23 * 60)
+        #expect(restored.focusedElapsed(at: start.addingTimeInterval(600)) == 120)
         #expect(boot?.bankedFocusSeconds == 60)
     }
 
-    @Test func runningPomodoroRecoversBreakSegment() {
+    @Test func runningPomodoroBreakFreezesPausedWithoutBreakCredit() {
         var session = PomodoroSessionTimer(configuration: .recommended, startedAt: start)
         session.evaluateCompletion(at: start.addingTimeInterval(25 * 60))
         #expect(session.isOnBreak)
-        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, savedAt: start.addingTimeInterval(25 * 60))
+        let savedAt = start.addingTimeInterval(25 * 60)
+        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, savedAt: savedAt)
         let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(25 * 60 + 60))
         guard case .pomodoro(let restored) = boot?.mode else {
             Issue.record("Expected pomodoro")
             return
         }
+        #expect(restored.phase == .paused)
         #expect(restored.isOnBreak)
         #expect(restored.currentRound == 1)
         #expect(restored.focusedElapsed(at: start.addingTimeInterval(25 * 60 + 60)) == 25 * 60)
     }
 
-    @Test func recoveryCrossesOneSegmentBoundary() {
+    @Test func inProcessPomodoroCrossesOneSegmentBoundary() {
         var session = PomodoroSessionTimer(
             configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
             startedAt: start
         )
-        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, savedAt: start)
-        // Past focus into break
-        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(5 * 60 + 20))
-        guard case .pomodoro(let restored) = boot?.mode else {
-            Issue.record("Expected pomodoro")
-            return
-        }
-        #expect(restored.isOnBreak)
-        #expect(restored.focusedElapsed(at: start.addingTimeInterval(5 * 60 + 20)) == 300)
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60 + 20))
+        #expect(session.isOnBreak)
+        #expect(session.focusedElapsed(at: start.addingTimeInterval(5 * 60 + 20)) == 300)
     }
 
-    @Test func recoveryCrossesSeveralSegmentBoundaries() {
+    @Test func inProcessPomodoroCrossesSeveralSegmentBoundaries() {
         var session = PomodoroSessionTimer(
             configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
             startedAt: start
         )
-        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, savedAt: start)
-        // focus5 + break1 + 30s into focus2
         let now = start.addingTimeInterval(6 * 60 + 30)
-        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: now)
-        guard case .pomodoro(let restored) = boot?.mode else {
-            Issue.record("Expected pomodoro")
-            return
-        }
-        #expect(!restored.isOnBreak)
-        #expect(restored.currentRound == 2)
-        #expect(restored.focusedElapsed(at: now) == 330)
+        session.evaluateCompletion(at: now)
+        #expect(!session.isOnBreak)
+        #expect(session.currentRound == 2)
+        #expect(session.focusedElapsed(at: now) == 330)
     }
 
-    @Test func recoveryReachesFinalFocusCompletionWithoutTrailingBreak() {
+    @Test func inProcessPomodoroReachesFinalFocusWithoutTrailingBreak() {
         var session = PomodoroSessionTimer(
             configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 2),
             startedAt: start
         )
-        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, banked: 30, savedAt: start)
         let now = start.addingTimeInterval(11 * 60)
-        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: now)
-        #expect(boot?.result != nil)
-        #expect(boot?.result?.endedNaturally == true)
-        #expect(boot?.result?.focusedDurationSeconds == 630) // 600 + banked 30
-        #expect(boot?.result?.plannedDurationSeconds == 600)
+        session.evaluateCompletion(at: now)
+        #expect(session.phase == .ended)
+        let raw = session.makeResult(for: amino, at: now)!
+        let merged = FocusSessionAccounting.mergeBankedFocus(30, into: raw)
+        #expect(merged.endedNaturally == true)
+        #expect(merged.focusedDurationSeconds == 630)
+        #expect(merged.plannedDurationSeconds == 600)
+    }
+
+    @Test func recoveryDoesNotSkipPhasesAcrossTerminationGap() {
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
+            startedAt: start
+        )
+        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, savedAt: start)
+        let boot = FocusRecoveryReconciler.restore(
+            snapshot: snap,
+            now: start.addingTimeInterval(6 * 60 + 30)
+        )
+        guard case .pomodoro(let restored) = boot?.mode else {
+            Issue.record("Expected pomodoro")
+            return
+        }
+        #expect(restored.phase == .paused)
+        #expect(!restored.isOnBreak)
+        #expect(restored.currentRound == 1)
+        #expect(restored.focusedElapsed(at: start.addingTimeInterval(6 * 60 + 30)) == 0)
     }
 
     @Test func pausedBreakRemainsPaused() {
@@ -1240,25 +1257,27 @@ struct FocusRecoveryTests {
             currentFocused: pomo.focusedElapsed(at: afterSimple.addingTimeInterval(5 * 60)),
             previousBank: bank
         )
-        var simpleAgain = FocusSessionTimer(durationMinutes: 25, startedAt: afterSimple.addingTimeInterval(5 * 60))
+        let simpleAgain = FocusSessionTimer(durationMinutes: 25, startedAt: afterSimple.addingTimeInterval(5 * 60))
+        let savedAt = afterSimple.addingTimeInterval(5 * 60)
         let snap = baseSnapshot(
             mode: .simple,
             simple: simpleAgain.snapshot,
             banked: bank2,
-            savedAt: afterSimple.addingTimeInterval(5 * 60)
+            savedAt: savedAt
         )
         FocusRecoveryStore.save(snap, in: defaults)
         let loaded = FocusRecoveryStore.load(in: defaults)
         let boot = FocusRecoveryReconciler.restore(
             snapshot: loaded!,
-            now: afterSimple.addingTimeInterval(5 * 60 + 60)
+            now: savedAt.addingTimeInterval(60)
         )
         #expect(boot?.bankedFocusSeconds == 480)
         guard case .simple(let restored) = boot?.mode else {
             Issue.record("Expected simple")
             return
         }
-        #expect(restored.activeElapsed(at: afterSimple.addingTimeInterval(5 * 60 + 60)) == 60)
+        #expect(restored.phase == .paused)
+        #expect(restored.activeElapsed(at: savedAt.addingTimeInterval(60)) == 0)
     }
 
     @Test func breakTimeExcludedFromFocusTotalsOnRecovery() {
@@ -1276,6 +1295,15 @@ struct FocusRecoveryTests {
         #expect(restored.focusedElapsed(at: start.addingTimeInterval(5 * 60 + 40)) == 300)
     }
 
+    @Test func pausedTimeExcludedFromFocusTotalsOnRecovery() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.pause(at: start.addingTimeInterval(180))
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 40, savedAt: start.addingTimeInterval(180))
+        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(900))
+        let earned = FocusRecoveryReconciler.earnedFocusSeconds(from: boot!, at: start.addingTimeInterval(900))
+        #expect(earned == 220) // 180 current + 40 banked; pause gap excluded
+    }
+
     @Test func clockMovedBackwardFreezesRunningAsPaused() {
         var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
         let savedAt = start.addingTimeInterval(300)
@@ -1290,14 +1318,63 @@ struct FocusRecoveryTests {
         #expect(restored.remainingSeconds(at: savedAt) == 20 * 60)
     }
 
-    @Test func unexpectedForwardJumpStillReconcilesWithoutNegativeRemaining() {
+    @Test func extremeClockSkewRejectsSnapshotAsStale() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let savedAt = start.addingTimeInterval(300)
+        timer.evaluateCompletion(at: savedAt)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: savedAt)
+        let farPast = savedAt.addingTimeInterval(-(FocusRecoveryClockPolicy.maxSnapshotAge + 120))
+        #expect(FocusRecoveryReconciler.restore(snapshot: snap, now: farPast) == nil)
+    }
+
+    @Test func unexpectedForwardJumpFreezesWithoutCompleting() {
         var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
         let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: start)
         let far = start.addingTimeInterval(3 * 24 * 3600)
         let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: far)
-        #expect(boot?.result != nil)
-        #expect(boot?.result?.focusedDurationSeconds == 1_500.0)
-        #expect((boot?.result?.focusedDurationSeconds ?? -1) >= 0)
+        guard case .simple(let restored) = boot?.mode else {
+            Issue.record("Expected simple paused recovery")
+            return
+        }
+        #expect(restored.phase == .paused)
+        #expect(boot?.result == nil)
+        #expect(restored.activeElapsed(at: far) == 0)
+    }
+
+    @Test func staleSnapshotOlderThanMaxAgeIsRejected() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: start)
+        let tooOld = start.addingTimeInterval(FocusRecoveryClockPolicy.maxSnapshotAge + 60)
+        #expect(FocusRecoveryReconciler.restore(snapshot: snap, now: tooOld) == nil)
+    }
+
+    @Test func recoveryPromptResumeStartsTimerWithoutPriorDeathGap() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(300))
+        let savedAt = start.addingTimeInterval(300)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 90, savedAt: savedAt)
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(600))
+        #expect(prompt?.wasInterruptedWhileRunning == true)
+        #expect(prompt?.earnedFocusSeconds == 390)
+        let resumed = FocusRecoveryReconciler.resume(prompt!.bootstrap, at: savedAt.addingTimeInterval(600))
+        guard case .simple(let running) = resumed.mode else {
+            Issue.record("Expected resumed simple")
+            return
+        }
+        #expect(running.phase == .running)
+        #expect(running.activeElapsed(at: savedAt.addingTimeInterval(600)) == 300)
+    }
+
+    @Test func recoveryPromptEndSessionPreservesBankedFocus() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(300))
+        let savedAt = start.addingTimeInterval(300)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 90, savedAt: savedAt)
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(120))!
+        let ended = FocusRecoveryReconciler.endSession(prompt.bootstrap, at: savedAt.addingTimeInterval(120))
+        #expect(ended.result?.focusedDurationSeconds == 390)
+        #expect(ended.result?.endedNaturally == false)
+        #expect(ended.bankedFocusSeconds == 0)
     }
 
     @Test func invalidCorruptedSnapshotIsRejected() {
@@ -1539,13 +1616,20 @@ struct FocusRecoveryTests {
             Issue.record("Expected simple recovery")
             return
         }
-        #expect(restored.phase == .running)
+        #expect(restored.phase == .paused)
         #expect(boot?.bankedFocusSeconds == 45)
-        #expect(restored.remainingSeconds(at: start.addingTimeInterval(180)) == 22 * 60)
+        // Death gap (60s) is not credited; remaining stays at savedAt.
+        #expect(restored.remainingSeconds(at: start.addingTimeInterval(120)) == 23 * 60)
 
-        restored.finish(at: start.addingTimeInterval(200))
-        let raw = restored.makeResult(for: task.asTaskItem, at: start.addingTimeInterval(200))!
-        let merged = FocusSessionAccounting.mergeBankedFocus(boot!.bankedFocusSeconds, into: raw)
+        let resumed = FocusRecoveryReconciler.resume(boot!, at: start.addingTimeInterval(180))
+        guard case .simple(var running) = resumed.mode else {
+            Issue.record("Expected resumed simple")
+            return
+        }
+        #expect(running.phase == .running)
+        running.finish(at: start.addingTimeInterval(200))
+        let raw = running.makeResult(for: task.asTaskItem, at: start.addingTimeInterval(200))!
+        let merged = FocusSessionAccounting.mergeBankedFocus(resumed.bankedFocusSeconds, into: raw)
 
         _ = try FocusSessionStore.commit(
             result: merged,
@@ -1564,11 +1648,12 @@ struct FocusRecoveryTests {
         let sessions = try context.fetch(FetchDescriptor<FocusSession>())
         #expect(sessions.count == 1)
         #expect(sessions.first?.id == experienceID)
-        #expect(sessions.first?.focusedDurationSeconds == 245.0) // 200 + banked 45
+        // 120s pre-kill + 20s after resume (death gap excluded) + banked 45 = 185
+        #expect(sessions.first?.focusedDurationSeconds == 185.0)
         #expect(sessions.first?.taskWasFinished == false)
         #expect(task.isCompleted == false)
         #expect(FocusRecoveryStore.load(in: defaults) == nil)
-        #expect(goal.totalFocusedDuration == 245.0)
+        #expect(goal.totalFocusedDuration == 185.0)
     }
 
     // MARK: - Final reliability QA
@@ -1602,8 +1687,9 @@ struct FocusRecoveryTests {
             Issue.record("Expected simple recovery after immediate start write")
             return
         }
-        #expect(restored.phase == .running)
-        #expect(restored.remainingSeconds(at: start.addingTimeInterval(15)) == 25 * 60 - 15)
+        #expect(restored.phase == .paused)
+        #expect(restored.remainingSeconds(at: start) == 25 * 60)
+        #expect(restored.activeElapsed(at: start.addingTimeInterval(15)) == 0)
     }
 
     @Test func immediateWriteAfterPauseSurvivesTermination() {
@@ -1663,9 +1749,69 @@ struct FocusRecoveryTests {
             Issue.record("Expected pomodoro after mode-switch write")
             return
         }
+        #expect(restored.phase == .paused)
         #expect(!restored.isOnBreak)
         #expect(boot?.bankedFocusSeconds == 120)
-        #expect(restored.focusedElapsed(at: start.addingTimeInterval(180)) == 60)
+        // Frozen at savedAt (+150); death gap to +180 is not focus.
+        #expect(restored.focusedElapsed(at: start.addingTimeInterval(180)) == 30)
+    }
+
+    @Test func recoverySnapshotSerializationRoundTrip() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(90))
+        let snap = baseSnapshot(
+            mode: .simple,
+            simple: timer.snapshot,
+            banked: 45,
+            savedAt: start.addingTimeInterval(90)
+        )
+        FocusRecoveryStore.save(snap, in: defaults)
+        let loaded = FocusRecoveryStore.load(in: defaults)
+        #expect(loaded == snap)
+        #expect(loaded?.version == FocusRecoverySnapshot.currentVersion)
+        #expect(loaded?.experienceID == snap.experienceID)
+        #expect(loaded?.bankedFocusSeconds == 45)
+    }
+
+    @Test func persistFrozenSnapshotRewritesRunningAsPaused() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(120))
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: start.addingTimeInterval(120))
+        FocusRecoveryStore.save(snap, in: defaults)
+        FocusRecoveryReconciler.persistFrozenSnapshotIfNeeded(
+            snap,
+            now: start.addingTimeInterval(200),
+            in: defaults
+        )
+        let loaded = FocusRecoveryStore.load(in: defaults)
+        #expect(loaded?.simple?.phase == .paused)
+        #expect(loaded?.simple?.pausedAt == start.addingTimeInterval(120))
+    }
+
+    @MainActor
+    @Test func notificationsClearedWhileRecoveredPaused() async {
+        let scheduler = MockFocusNotificationScheduler()
+        scheduler.status = .authorized
+        let coordinator = FocusNotificationCoordinator(scheduler: scheduler, skipsSystemPrompt: true)
+
+        var running = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: running, taskTitle: amino.title, at: start)
+        #expect(scheduler.scheduled.count == 1)
+
+        let savedAt = start.addingTimeInterval(120)
+        running.evaluateCompletion(at: savedAt)
+        let snap = baseSnapshot(mode: .simple, simple: running.snapshot, savedAt: savedAt)
+        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: savedAt.addingTimeInterval(300))
+        guard case .simple(let restored) = boot?.mode else {
+            Issue.record("Expected paused recovery")
+            return
+        }
+        #expect(restored.phase == .paused)
+        await coordinator.sync(timer: restored, taskTitle: amino.title, at: savedAt.addingTimeInterval(300))
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.isEmpty)
     }
 
     @MainActor
