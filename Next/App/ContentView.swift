@@ -132,11 +132,13 @@ private struct FocusRecoveryGateHost: View {
             FocusRecoveryPromptView(
                 model: model,
                 onResume: {
-                    let resumed = FocusRecoveryReconciler.resume(model.bootstrap, at: Date())
+                    // Persist running state before FocusView appears — kill must not revert to prompt.
+                    let resumed = FocusRecoveryReconciler.resumeAndPersist(model.bootstrap, at: Date())
                     gate.phase = .focus(resumed)
                 },
                 onEndSession: {
-                    let ended = FocusRecoveryReconciler.endSession(model.bootstrap, at: Date())
+                    // Persist awaiting-completion before FocusView appears.
+                    let ended = FocusRecoveryReconciler.endSessionAndPersist(model.bootstrap, at: Date())
                     gate.phase = .focus(ended)
                 }
             )

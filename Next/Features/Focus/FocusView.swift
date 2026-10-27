@@ -73,6 +73,10 @@ struct FocusView: View {
         self.notifications = notifications
         self.onDone = onDone
 
+        // Claim presence at construction so ContentView cold-recovery cannot
+        // stack a prompt over a live FocusView while onAppear is still pending.
+        FocusSessionPresence.isActive = true
+
         if let bootstrap {
             _experienceID = State(initialValue: bootstrap.experienceID)
             _bankedFocusSeconds = State(initialValue: bootstrap.bankedFocusSeconds)
@@ -86,6 +90,9 @@ struct FocusView: View {
             if bootstrap.result != nil {
                 _isEndingSession = State(initialValue: true)
             }
+            // Durable write immediately — Resume/End/awaiting-completion must survive
+            // kill before onAppear (GateHost also persists; this is defense in depth).
+            FocusRecoveryPersistence.writeBootstrap(bootstrap, at: Date())
         } else {
             // Write durable recovery state immediately at session construction —
             // do not wait for onAppear / scenePhase / the 1s display clock.

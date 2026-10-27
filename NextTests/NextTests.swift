@@ -1975,6 +1975,455 @@ struct FocusRecoveryTests {
         #expect(FocusRecoveryStore.load(in: defaults) == nil)
         #expect(task.isCompleted == false)
     }
+
+    // MARK: - V4-M5 Integrity (repeated interruption & durable Resume/End)
+
+    @Test func killDuringRecoveryPromptStillPresentsFrozenPrompt() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(180))
+        let savedAt = start.addingTimeInterval(180)
+        var snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 60, savedAt: savedAt)
+        FocusRecoveryStore.save(snap, in: defaults)
+
+        // First cold launch freezes running → paused.
+        FocusRecoveryReconciler.persistFrozenSnapshotIfNeeded(
+            FocusRecoveryStore.load(in: defaults)!,
+            now: savedAt.addingTimeInterval(30),
+            in: defaults
+        )
+        let afterFirst = FocusRecoveryStore.load(in: defaults)!
+        #expect(afterFirst.simple?.phase == .paused)
+
+        // Second kill during prompt — still unfinished, still prompt-eligible.
+        let prompt = FocusRecoveryReconciler.makePrompt(
+            snapshot: afterFirst,
+            now: savedAt.addingTimeInterval(90)
+        )
+        #expect(prompt != nil)
+        #expect(prompt?.earnedFocusSeconds == 240) // 180 + banked 60
+        #expect(prompt?.wasInterruptedWhileRunning == false) // already frozen paused
+        #expect(FocusRecoveryReconciler.restore(snapshot: afterFirst, now: savedAt.addingTimeInterval(90))?.result == nil)
+    }
+
+    @Test func resumePersistsRunningStateBeforeFocusAppear() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(120))
+        let savedAt = start.addingTimeInterval(120)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 30, savedAt: savedAt)
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(60))!
+        let resumeAt = savedAt.addingTimeInterval(60)
+        let resumed = FocusRecoveryReconciler.resumeAndPersist(
+            prompt.bootstrap,
+            at: resumeAt,
+            in: defaults
+        )
+        guard case .simple(let running) = resumed.mode else {
+            Issue.record("Expected running simple")
+            return
+        }
+        #expect(running.phase == .running)
+
+        // Kill before FocusView.onAppear — store must already be running, not prompt-paused.
+        let loaded = FocusRecoveryStore.load(in: defaults)!
+        #expect(loaded.awaitingCompletion == false)
+        #expect(loaded.simple?.phase == .running)
+        #expect(loaded.bankedFocusSeconds == 30)
+
+        // Next cold launch freezes again (no death-gap credit).
+        let again = FocusRecoveryReconciler.restore(
+            snapshot: loaded,
+            now: resumeAt.addingTimeInterval(45)
+        )
+        guard case .simple(let frozen) = again?.mode else {
+            Issue.record("Expected frozen after second kill")
+            return
+        }
+        #expect(frozen.phase == .paused)
+        #expect(frozen.activeElapsed(at: resumeAt.addingTimeInterval(45)) == 120)
+    }
+
+    @Test func endSessionPersistsAwaitingCompletionBeforeFocusAppear() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(300))
+        let savedAt = start.addingTimeInterval(300)
+        let snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 90, savedAt: savedAt)
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(20))!
+        let ended = FocusRecoveryReconciler.endSessionAndPersist(
+            prompt.bootstrap,
+            at: savedAt.addingTimeInterval(20),
+            in: defaults
+        )
+        #expect(ended.result?.focusedDurationSeconds == 390)
+
+        // Kill before Completion appears — must restore Completion, not Resume prompt.
+        let loaded = FocusRecoveryStore.load(in: defaults)!
+        #expect(loaded.awaitingCompletion == true)
+        #expect(loaded.completionFocusedSeconds == 390)
+        let boot = FocusRecoveryReconciler.restore(
+            snapshot: loaded,
+            now: savedAt.addingTimeInterval(80)
+        )
+        #expect(boot?.result?.focusedDurationSeconds == 390)
+        #expect(FocusRecoveryReconciler.makePrompt(snapshot: loaded, now: savedAt.addingTimeInterval(80)) == nil)
+    }
+
+    @Test func repeatedResumeCyclesPreserveEarnedFocusWithoutDeathGap() {
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(100))
+        var snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 50, savedAt: start.addingTimeInterval(100))
+
+        // Kill 1 → resume → run 40s → kill 2 → resume → run 20s → end
+        let r1 = FocusRecoveryReconciler.resume(
+            FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(160))!,
+            at: start.addingTimeInterval(160)
+        )
+        guard case .simple(var t1) = r1.mode else { return }
+        t1.evaluateCompletion(at: start.addingTimeInterval(200))
+        snap = baseSnapshot(
+            mode: .simple,
+            simple: t1.snapshot,
+            banked: 50,
+            savedAt: start.addingTimeInterval(200)
+        )
+
+        let r2 = FocusRecoveryReconciler.resume(
+            FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(260))!,
+            at: start.addingTimeInterval(260)
+        )
+        guard case .simple(var t2) = r2.mode else { return }
+        t2.evaluateCompletion(at: start.addingTimeInterval(280))
+        let ended = FocusRecoveryReconciler.endSession(
+            FocusRecoveryBootstrap(
+                experienceID: snap.experienceID,
+                task: amino,
+                bankedFocusSeconds: 50,
+                mode: .simple(t2),
+                result: nil
+            ),
+            at: start.addingTimeInterval(280)
+        )
+        // 100 (pre-kill1) + 40 (after resume1) + 20 (after resume2) + banked 50 = 210
+        // Death gaps 60+60 excluded.
+        #expect(ended.result?.focusedDurationSeconds == 210)
+    }
+
+    @Test func pomodoroFocusKillDuringPromptThenResumePreservesRound() {
+        let defaults = defaults()
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 1, rounds: 3),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(90))
+        let savedAt = start.addingTimeInterval(90)
+        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, banked: 15, savedAt: savedAt)
+        FocusRecoveryStore.save(snap, in: defaults)
+        FocusRecoveryReconciler.persistFrozenSnapshotIfNeeded(snap, now: savedAt.addingTimeInterval(10), in: defaults)
+
+        let prompt = FocusRecoveryReconciler.makePrompt(
+            snapshot: FocusRecoveryStore.load(in: defaults)!,
+            now: savedAt.addingTimeInterval(40)
+        )!
+        #expect(prompt.modeLabel == "Pomodoro · Focus")
+        let resumed = FocusRecoveryReconciler.resumeAndPersist(
+            prompt.bootstrap,
+            at: savedAt.addingTimeInterval(40),
+            in: defaults
+        )
+        guard case .pomodoro(let live) = resumed.mode else {
+            Issue.record("Expected pomodoro")
+            return
+        }
+        #expect(live.phase == .running)
+        #expect(live.currentRound == 1)
+        #expect(!live.isOnBreak)
+        #expect(FocusRecoveryStore.load(in: defaults)?.pomodoro?.phase == .running)
+    }
+
+    @Test func pomodoroBreakKillThenEndExcludesBreakFromFocus() {
+        let defaults = defaults()
+        var session = PomodoroSessionTimer(
+            configuration: PomodoroConfiguration(focusMinutes: 5, breakMinutes: 2, rounds: 2),
+            startedAt: start
+        )
+        session.evaluateCompletion(at: start.addingTimeInterval(5 * 60))
+        #expect(session.isOnBreak)
+        let savedAt = start.addingTimeInterval(5 * 60 + 30)
+        session.evaluateCompletion(at: savedAt)
+        let snap = baseSnapshot(mode: .pomodoro, pomodoro: session.snapshot, banked: 0, savedAt: savedAt)
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(120))!
+        #expect(prompt.modeLabel == "Pomodoro · Break")
+        let ended = FocusRecoveryReconciler.endSessionAndPersist(
+            prompt.bootstrap,
+            at: savedAt.addingTimeInterval(120),
+            in: defaults
+        )
+        #expect(ended.result?.focusedDurationSeconds == 300) // focus only; break + death gap excluded
+        #expect(FocusRecoveryStore.load(in: defaults)?.awaitingCompletion == true)
+    }
+
+    @Test func interruptedCompletionRelaunchDoesNotShowResumePrompt() {
+        let defaults = defaults()
+        let snap = baseSnapshot(
+            mode: .simple,
+            simple: FocusSessionTimer(durationMinutes: 25, startedAt: start).snapshot,
+            savedAt: start,
+            awaiting: true,
+            planned: 1500,
+            focused: 480,
+            natural: false
+        )
+        FocusRecoveryStore.save(snap, in: defaults)
+        let loaded = FocusRecoveryStore.load(in: defaults)!
+        #expect(FocusRecoveryReconciler.makePrompt(snapshot: loaded, now: start.addingTimeInterval(30)) == nil)
+        let boot = FocusRecoveryReconciler.restore(snapshot: loaded, now: start.addingTimeInterval(30))
+        #expect(boot?.result?.focusedDurationSeconds == 480)
+        #expect(boot?.result?.endedNaturally == false)
+    }
+
+    @MainActor
+    @Test func yesAndNotYetEachCommitExactlyOnceForSameExperience() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: goal)
+        context.insert(task)
+        try context.save()
+
+        let experienceID = UUID()
+        let result = FocusSessionResult(
+            task: task.asTaskItem,
+            plannedDurationSeconds: 1500,
+            focusedDurationSeconds: 420,
+            endedNaturally: false
+        )
+
+        // Simulate double-tap NOT YET then YES on a stuck UI — store stays idempotent.
+        _ = try FocusSessionStore.commit(
+            result: result,
+            taskWasFinished: false,
+            context: context,
+            experienceID: experienceID
+        )
+        _ = try FocusSessionStore.commit(
+            result: result,
+            taskWasFinished: false,
+            context: context,
+            experienceID: experienceID
+        )
+        _ = try FocusSessionStore.commit(
+            result: result,
+            taskWasFinished: true,
+            context: context,
+            experienceID: experienceID
+        )
+
+        let sessions = try context.fetch(FetchDescriptor<FocusSession>())
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.taskWasFinished == false) // first commit wins
+        #expect(sessions.first?.focusedDurationSeconds == 420)
+        #expect(task.isCompleted == false)
+    }
+
+    @MainActor
+    @Test func repeatedEndSessionCannotDuplicateFocusSession() throws {
+        let defaults = defaults()
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Study for MCAT", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Review amino acids", durationMinutes: 25, energyRequired: .good, goal: goal)
+        context.insert(task)
+        try context.save()
+
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(200))
+        let savedAt = start.addingTimeInterval(200)
+        var snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 40, savedAt: savedAt)
+        snap.taskID = task.id
+        snap.goalID = goal.id
+        let experienceID = snap.experienceID
+
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: savedAt.addingTimeInterval(10))!
+        let ended1 = FocusRecoveryReconciler.endSessionAndPersist(prompt.bootstrap, at: savedAt.addingTimeInterval(10), in: defaults)
+        let ended2 = FocusRecoveryReconciler.endSessionAndPersist(prompt.bootstrap, at: savedAt.addingTimeInterval(11), in: defaults)
+        #expect(ended1.result?.focusedDurationSeconds == ended2.result?.focusedDurationSeconds)
+
+        _ = try FocusSessionStore.commit(
+            result: ended1.result!,
+            taskWasFinished: false,
+            context: context,
+            experienceID: experienceID
+        )
+        _ = try FocusSessionStore.commit(
+            result: ended2.result!,
+            taskWasFinished: true,
+            context: context,
+            experienceID: experienceID
+        )
+        FocusRecoveryStore.clear(in: defaults)
+
+        #expect(try context.fetch(FetchDescriptor<FocusSession>()).count == 1)
+        #expect(FocusRecoveryStore.loadForPresentation(context: context, in: defaults) == nil)
+    }
+
+    @MainActor
+    @Test func deletedTaskAndGoalStillRecoverAndCommitSnapshotOnly() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let orphan = TaskItem(
+            id: UUID(),
+            goalID: UUID(),
+            title: "Deleted task title",
+            durationMinutes: 20,
+            energyRequired: .low,
+            area: "Career",
+            goal: "Deleted goal title"
+        )
+        var timer = FocusSessionTimer(durationMinutes: 20, startedAt: start)
+        timer.evaluateCompletion(at: start.addingTimeInterval(150))
+        let snap = FocusRecoverySnapshot(
+            version: FocusRecoverySnapshot.currentVersion,
+            experienceID: UUID(),
+            savedAt: start.addingTimeInterval(150),
+            taskID: orphan.id,
+            goalID: orphan.goalID,
+            taskTitle: orphan.title,
+            goalTitle: orphan.goal,
+            taskDurationMinutes: orphan.durationMinutes,
+            energyRequiredRaw: orphan.energyRequired.rawValue,
+            area: orphan.area,
+            bankedFocusSeconds: 25,
+            mode: .simple,
+            simple: timer.snapshot,
+            pomodoro: nil,
+            awaitingCompletion: false,
+            completionPlannedSeconds: nil,
+            completionFocusedSeconds: nil,
+            completionEndedNaturally: nil
+        )
+        let prompt = FocusRecoveryReconciler.makePrompt(snapshot: snap, now: start.addingTimeInterval(200))!
+        #expect(prompt.taskTitle == "Deleted task title")
+        #expect(prompt.goalTitle == "Deleted goal title")
+        let ended = FocusRecoveryReconciler.endSession(prompt.bootstrap, at: start.addingTimeInterval(200))
+        let session = try FocusSessionStore.commit(
+            result: ended.result!,
+            taskWasFinished: true,
+            context: context,
+            experienceID: snap.experienceID
+        )
+        #expect(session.goal == nil)
+        #expect(session.task == nil)
+        #expect(session.historyTaskTitle == "Deleted task title")
+        #expect(session.historyGoalTitle == "Deleted goal title")
+        #expect(session.focusedDurationSeconds == 175) // 150 + banked 25
+    }
+
+    @MainActor
+    @Test func changedLiveTitlesDoNotReplaceSnapshotDisplayOnRecovery() throws {
+        let context = ModelContext(try NextPersistence.makeInMemoryContainer())
+        let goal = Goal(title: "Live Goal Renamed", area: .education, priority: .high)
+        context.insert(goal)
+        let task = GoalTask(title: "Live Task Renamed", durationMinutes: 25, energyRequired: .good, goal: goal)
+        context.insert(task)
+        try context.save()
+
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.pause(at: start.addingTimeInterval(60))
+        var snap = baseSnapshot(mode: .simple, simple: timer.snapshot, banked: 0, savedAt: start.addingTimeInterval(60))
+        snap.taskID = task.id
+        snap.goalID = goal.id
+        // Snapshot preserves titles from session start.
+        snap.taskTitle = "Original task"
+        snap.goalTitle = "Original goal"
+
+        let boot = FocusRecoveryReconciler.restore(snapshot: snap, now: start.addingTimeInterval(120))!
+        #expect(boot.task.title == "Original task")
+        #expect(boot.task.goal == "Original goal")
+
+        let ended = FocusRecoveryReconciler.endSession(boot, at: start.addingTimeInterval(120))
+        let session = try FocusSessionStore.commit(
+            result: ended.result!,
+            taskWasFinished: false,
+            context: context,
+            experienceID: snap.experienceID
+        )
+        #expect(session.task?.id == task.id)
+        #expect(session.goal?.id == goal.id)
+        #expect(session.historyTaskTitle == "Original task")
+        #expect(session.historyGoalTitle == "Original goal")
+    }
+
+    @MainActor
+    @Test func liveFocusPresenceSuppressesColdRecoveryPresentation() {
+        // Mirrors ContentView.presentRecoveredFocusIfNeeded guard.
+        FocusSessionPresence.isActive = true
+        defer { FocusSessionPresence.isActive = false }
+
+        let defaults = defaults()
+        let timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        FocusRecoveryStore.save(
+            baseSnapshot(mode: .simple, simple: timer.snapshot, savedAt: start),
+            in: defaults
+        )
+        #expect(FocusRecoveryStore.load(in: defaults) != nil)
+        // When presence is active, UI must not present recovery even if a snapshot exists.
+        #expect(FocusSessionPresence.isActive)
+    }
+
+    @MainActor
+    @Test func notificationCycleAcrossRepeatedInterruptDoesNotAccumulate() async {
+        let scheduler = MockFocusNotificationScheduler()
+        scheduler.status = .authorized
+        let coordinator = FocusNotificationCoordinator(scheduler: scheduler, skipsSystemPrompt: true)
+
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: start)
+        #expect(scheduler.scheduled.count == 1)
+
+        // Cold recovery cancel (prompt path).
+        coordinator.cancel()
+        #expect(scheduler.scheduled.isEmpty)
+
+        // Resume schedules one completion.
+        timer.pause(at: start.addingTimeInterval(60))
+        let resumeAt = start.addingTimeInterval(120)
+        timer.resume(at: resumeAt)
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: resumeAt)
+        #expect(scheduler.scheduled.count == 1)
+
+        // Second interrupt cancel.
+        coordinator.cancel()
+        #expect(scheduler.scheduled.isEmpty)
+
+        // End / completion path stays empty.
+        timer.finish(at: resumeAt.addingTimeInterval(30))
+        await coordinator.sync(timer: timer, taskTitle: amino.title, at: resumeAt.addingTimeInterval(30))
+        #expect(scheduler.scheduled.isEmpty)
+        #expect(scheduler.scheduledSegments.isEmpty)
+    }
+
+    @Test func writeBootstrapRoundTripMatchesResumeAndEndIntent() {
+        let defaults = defaults()
+        var timer = FocusSessionTimer(durationMinutes: 25, startedAt: start)
+        timer.pause(at: start.addingTimeInterval(90))
+        let boot = FocusRecoveryBootstrap(
+            experienceID: UUID(),
+            task: amino,
+            bankedFocusSeconds: 12,
+            mode: .simple(timer),
+            result: nil
+        )
+        FocusRecoveryPersistence.writeBootstrap(boot, at: start.addingTimeInterval(90), in: defaults)
+        #expect(FocusRecoveryStore.load(in: defaults)?.simple?.phase == .paused)
+
+        let resumed = FocusRecoveryReconciler.resumeAndPersist(boot, at: start.addingTimeInterval(100), in: defaults)
+        #expect(FocusRecoveryStore.load(in: defaults)?.simple?.phase == .running)
+
+        let ended = FocusRecoveryReconciler.endSessionAndPersist(resumed, at: start.addingTimeInterval(110), in: defaults)
+        #expect(FocusRecoveryStore.load(in: defaults)?.awaitingCompletion == true)
+        #expect(ended.result != nil)
+    }
 }
 
 struct PersistenceTests {

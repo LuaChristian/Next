@@ -1725,6 +1725,105 @@ final class NextUITests: XCTestCase {
     }
 
     @MainActor
+    func testV4M5RecoveryIntegrityVisualReview() throws {
+        let review = RecoveryIntegrityCapture(self)
+        let suite = "next.uitest.v4m5-recovery-\(UUID().uuidString)"
+
+        func launchRecovery(
+            _ fixture: String,
+            appearance: String = "light",
+            contentSize: String? = nil
+        ) -> XCUIApplication {
+            let app = XCUIApplication()
+            var args = [
+                "UITEST_SEED_GARDEN",
+                "UITEST_DEFAULTS_SUITE", suite,
+                "UITEST_APPEARANCE", appearance,
+                "UITEST_FOCUS_RECOVERY", fixture,
+                "UITEST_WRITE_REVIEW_SHOTS"
+            ]
+            if let contentSize {
+                args += ["-UIPreferredContentSizeCategoryName", contentSize]
+            }
+            app.launchArguments = args
+            app.launch()
+            return app
+        }
+
+        // 01 — Simple Focus repeated recovery (second launch of same suite after resume cycle)
+        var app = launchRecovery("simple")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        app.descendants(matching: .any)["recoveryResume"].tap()
+        XCTAssertTrue(app.buttons["PAUSE"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        app = launchRecovery("simple")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryResume"].exists)
+        review.capture(app, "01 — Simple Focus repeated recovery")
+        app.terminate()
+
+        // 02 — Pomodoro focus repeated recovery
+        app = launchRecovery("pomodoroFocus")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        resumeRecoveredSessionIfNeeded(in: app)
+        XCTAssertTrue(app.staticTexts["pomodoroPhase"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        app = launchRecovery("pomodoroFocus")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryModeLabel"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["recoveryModeLabel"].label.uppercased().contains("POMODORO")
+        )
+        review.capture(app, "02 — Pomodoro focus repeated recovery")
+        app.terminate()
+
+        // 03 — Pomodoro break recovery
+        app = launchRecovery("pomodoroBreak")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["recoveryModeLabel"].label.uppercased().contains("BREAK")
+        )
+        review.capture(app, "03 — Pomodoro break recovery")
+        app.terminate()
+
+        // 04 — Recovery after multiple interruptions (paused fixture stands in for multi-kill)
+        app = launchRecovery("pausedSimple")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryEarnedFocus"].waitForExistence(timeout: 5))
+        review.capture(app, "04 — Recovery after multiple interruptions")
+        app.terminate()
+
+        // 05 — Completion after recovery (End Session)
+        app = launchRecovery("pausedSimple")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryEndSession"].waitForExistence(timeout: 5))
+        app.descendants(matching: .any)["recoveryEndSession"].tap()
+        XCTAssertTrue(app.staticTexts["NICE WORK."].waitForExistence(timeout: 5))
+        review.capture(app, "05 — Completion after recovery")
+        app.terminate()
+
+        // 06 — Dark mode recovery
+        app = launchRecovery("pomodoroFocus", appearance: "dark")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        review.capture(app, "06 — Dark mode recovery")
+        app.terminate()
+
+        // 07 — Large Dynamic Type recovery
+        app = launchRecovery(
+            "pausedPomodoro",
+            contentSize: "UICTContentSizeCategoryAccessibilityXL"
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryPromptTitle"].waitForExistence(timeout: 5))
+        review.capture(app, "07 — Large Dynamic Type recovery")
+        app.terminate()
+
+        // 08 — Small-screen recovery
+        app = launchRecovery("pausedPomodoro")
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryResume"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryEndSession"].exists)
+        review.capture(app, "08 — Small-screen recovery")
+    }
+
+    @MainActor
     func testV4M4FocusSessionRecoveryVisualReview() throws {
         let review = FocusSessionRecoveryCapture(self)
         let suite = "next.uitest.v4m4-recovery-\(UUID().uuidString)"
@@ -4924,6 +5023,17 @@ private struct FocusSessionExperienceCapture {
 private struct FocusSessionRecoveryCapture {
     static let directory = URL(fileURLWithPath:
         "/Users/luachristian/Documents/Personal Projects/Next/Review/V4-M4-Focus-Session-Recovery"
+    )
+    let test: XCTestCase
+    init(_ test: XCTestCase) { self.test = test }
+    func capture(_ app: XCUIApplication, _ name: String) {
+        ReviewShotStore.capture(app, named: name, into: Self.directory, test: test, forceDiskWrite: true)
+    }
+}
+
+private struct RecoveryIntegrityCapture {
+    static let directory = URL(fileURLWithPath:
+        "/Users/luachristian/Documents/Personal Projects/Next/Review/V4-M5-Recovery-Integrity"
     )
     let test: XCTestCase
     init(_ test: XCTestCase) { self.test = test }

@@ -241,6 +241,35 @@ enum FocusRecoveryPersistence {
         )
         FocusRecoveryStore.save(snapshot, in: defaults)
     }
+
+    /// Persist a restored bootstrap immediately (Resume / End / awaiting-completion).
+    /// Must not wait for FocusView.onAppear — kill before appear must not lose intent.
+    static func writeBootstrap(
+        _ bootstrap: FocusRecoveryBootstrap,
+        at current: Date = Date(),
+        in defaults: UserDefaults? = nil
+    ) {
+        let simple: FocusSessionTimer.Snapshot?
+        let pomodoro: PomodoroSessionTimer.Snapshot?
+        switch bootstrap.mode {
+        case .simple(let timer):
+            simple = timer.snapshot
+            pomodoro = nil
+        case .pomodoro(let session):
+            simple = nil
+            pomodoro = session.snapshot
+        }
+        writeImmediate(
+            experienceID: bootstrap.experienceID,
+            task: bootstrap.task,
+            bankedFocusSeconds: bootstrap.bankedFocusSeconds,
+            simple: simple,
+            pomodoro: pomodoro,
+            result: bootstrap.result,
+            at: current,
+            in: defaults
+        )
+    }
 }
 
 /// Reconstructed in-memory focus state after loading a snapshot.
@@ -394,6 +423,17 @@ enum FocusRecoveryReconciler {
         return boot
     }
 
+    /// Resume and durable-write immediately (survives kill before FocusView.onAppear).
+    static func resumeAndPersist(
+        _ bootstrap: FocusRecoveryBootstrap,
+        at now: Date = Date(),
+        in defaults: UserDefaults? = nil
+    ) -> FocusRecoveryBootstrap {
+        let resumed = resume(bootstrap, at: now)
+        FocusRecoveryPersistence.writeBootstrap(resumed, at: now, in: defaults)
+        return resumed
+    }
+
     /// User chose End Session — finish without crediting death-gap time (paused finish).
     static func endSession(
         _ bootstrap: FocusRecoveryBootstrap,
@@ -422,6 +462,17 @@ enum FocusRecoveryReconciler {
             boot.mode = .pomodoro(session)
         }
         return boot
+    }
+
+    /// End Session and durable-write awaiting-completion immediately.
+    static func endSessionAndPersist(
+        _ bootstrap: FocusRecoveryBootstrap,
+        at now: Date = Date(),
+        in defaults: UserDefaults? = nil
+    ) -> FocusRecoveryBootstrap {
+        let ended = endSession(bootstrap, at: now)
+        FocusRecoveryPersistence.writeBootstrap(ended, at: now, in: defaults)
+        return ended
     }
 
     static func earnedFocusSeconds(from bootstrap: FocusRecoveryBootstrap, at now: Date) -> TimeInterval {
